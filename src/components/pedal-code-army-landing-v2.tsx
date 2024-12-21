@@ -204,7 +204,7 @@ export default function PedalCodeArmyLanding() {
             </p>
             <div className="flex justify-center space-x-12">
               <Link
-                href="https://www.youtube.com/benalbuckets"
+                href="https://www.youtube.com/@benalbuckets"
                 className="flex transform flex-col items-center space-y-2 text-black transition duration-500 hover:scale-110 hover:text-gray-800"
               >
                 <Youtube size={48} />
