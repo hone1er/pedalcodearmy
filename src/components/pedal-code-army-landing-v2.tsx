@@ -164,8 +164,7 @@ export default function PedalCodeArmyLanding() {
             </h2>
             <p className="mb-12 text-center text-xl">
               Think you&apos;ve got what it takes to be a moped miscreant? Apply
-              now! No coding skills required (we barely know how to use
-              computers anyway).
+              now!
             </p>
             <form className="mx-auto max-w-md space-y-6">
               <Input
