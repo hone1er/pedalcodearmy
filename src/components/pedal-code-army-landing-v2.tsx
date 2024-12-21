@@ -1,3 +1,4 @@
+"use client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -12,8 +13,11 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
+import { useState } from "react";
 
 export default function PedalCodeArmyLanding() {
+  const [applicationContent, setApplicationContent] = useState("");
+  const [applicantName, setApplicantName] = useState("");
   return (
     <div className="min-h-screen bg-[#FFD700] font-sans">
       <header className="sticky top-0 z-50 bg-black py-4 text-[#FFD700]">
@@ -41,7 +45,6 @@ export default function PedalCodeArmyLanding() {
               </li>
             </ul>
           </nav>
-          <Button className="md:hidden">Menu</Button>
         </div>
       </header>
 
@@ -171,24 +174,27 @@ export default function PedalCodeArmyLanding() {
                 type="text"
                 placeholder="Your Name (or cool moped nickname)"
                 className="w-full p-3 text-lg"
+                value={applicantName}
+                onChange={(e) => setApplicantName(e.target.value)}
               />
-              <Input
-                type="email"
-                placeholder="Your Email (we promise not to spam... much)"
-                className="w-full p-3 text-lg"
-              />
+
               <Textarea
                 placeholder="Tell us about your moped (or the one you're eyeing on Craigslist)"
                 className="w-full p-3 text-lg"
                 rows={4}
+                value={applicationContent}
+                onChange={(e) => setApplicationContent(e.target.value)}
               />
-              <Button
-                type="submit"
-                size="lg"
-                className="w-full bg-black text-lg text-[#FFD700] hover:bg-gray-800"
+              <Link
+                href={`mailto:penalcodehone@gmail.com/?subject=Join%20the%20Pedal%20Code%20Army&body=Hi I'm ${applicantName} and here is some info about my moped! ${applicationContent}`}
               >
-                Submit Application
-              </Button>
+                <Button
+                  size="lg"
+                  className="mt-4 w-full bg-black text-lg text-[#FFD700] hover:bg-gray-800"
+                >
+                  Submit Application
+                </Button>
+              </Link>
             </form>
           </div>
         </section>
