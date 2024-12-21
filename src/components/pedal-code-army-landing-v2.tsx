@@ -53,7 +53,7 @@ export default function PedalCodeArmyLanding() {
             layout="fill"
             objectPosition="0 57%"
             objectFit="cover"
-            className="absolute z-0"
+            className="absolute z-0 brightness-[1.2]"
           />
           <div className="relative z-10 w-full max-w-full rounded-lg bg-black bg-opacity-50 p-8 text-center text-white">
             <h1 className="mx-auto mb-4 max-w-96 text-pretty text-5xl font-bold md:max-w-full">
@@ -100,8 +100,8 @@ export default function PedalCodeArmyLanding() {
                   AM.
                 </p>
                 <p className="text-lg">
-                  No pretentiousness here - just good vibes, the sweet smell of
-                  two-stroke engines, and occasionally getting lost in Oakland.
+                  Just good vibes, the sweet smell of two-stroke engines, and
+                  occasionally getting lost in Oakland.
                 </p>
               </div>
             </div>
@@ -119,19 +119,19 @@ export default function PedalCodeArmyLanding() {
                   icon: Calendar,
                   title: "Moped Mondays",
                   description:
-                    "Every Monday at 2 PM, Lake Merritt. BYO Moped (Borrowing is cool too)",
+                    "Every Monday at some time in the evening at some place in the East Bay. Where we go? Nobody knows. Or maybe you know! BYO Moped (Borrowing is cool too)",
                 },
                 {
                   icon: Wrench,
                   title: "Tinkerer's Paradise",
                   description:
-                    "We'll help you fix that rattling noise. 60% of the time, it works every time!",
+                    "We'll help you fix that rattling noise. 60% of the time, it works every time! You gotta supply the parts though and maybe some beer. Let's get you rolling!",
                 },
                 {
                   icon: MapPin,
                   title: "East Bay Explorer",
                   description:
-                    "Discover hidden gems and the best taco trucks. Getting lost is half the fun!",
+                    "Discover hidden gems and the best taco trucks. Getting lost is half the fun! Which is good because we get lost a lot.",
                 },
               ].map((activity, index) => (
                 <div
