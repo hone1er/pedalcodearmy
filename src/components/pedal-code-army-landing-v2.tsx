@@ -157,7 +157,7 @@ export default function PedalCodeArmyLanding() {
           </div>
         </section>
 
-        <section id="join" className="bg-white py-20">
+        <section id="join" className="bg-white py-20 text-black">
           <div className="container mx-auto px-4">
             <h2 className="mb-8 text-center text-4xl font-bold">
               Join the Pedal Code Army
@@ -205,14 +205,14 @@ export default function PedalCodeArmyLanding() {
             </p>
             <div className="flex justify-center space-x-12">
               <Link
-                href="https://www.youtube.com"
+                href="https://www.youtube.com/benalbuckets"
                 className="flex transform flex-col items-center space-y-2 text-black transition duration-500 hover:scale-110 hover:text-gray-800"
               >
                 <Youtube size={48} />
                 <span className="text-lg">YouTube</span>
               </Link>
               <Link
-                href="https://www.instagram.com"
+                href="https://www.instagram.com/pedalcodearmy"
                 className="flex transform flex-col items-center space-y-2 text-black transition duration-500 hover:scale-110 hover:text-gray-800"
               >
                 <Instagram size={48} />
