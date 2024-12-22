@@ -191,7 +191,7 @@ export default function PedalCodeArmyLanding() {
                 onChange={(e) => setApplicationContent(e.target.value)}
               />
               <Link
-                href={`mailto:penalcodehone@gmail.com/?subject=Join%20the%20Pedal%20Code%20Army&body=Hi I'm ${applicantName} and here is some info about my moped! ${applicationContent}`}
+                href={`mailto:pedalcodearmy@gmail.com/?subject=Join%20the%20Pedal%20Code%20Army&body=Hi I'm ${applicantName} and here is some info about my moped! ${applicationContent}`}
               >
                 <Button
                   size="lg"
