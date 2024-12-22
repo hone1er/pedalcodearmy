@@ -4,6 +4,7 @@ import { BikeIcon as Motorcycle } from "lucide-react";
 import { GeistSans } from "geist/font/sans";
 import { type Metadata } from "next";
 import Link from "next/link";
+import Image from "next/image";
 
 export const metadata: Metadata = {
   title: "Pedal Code Army",
@@ -22,7 +23,13 @@ export default function RootLayout({
           <header className="sticky top-0 z-50 bg-black py-4 text-[#FFD700]">
             <div className="container mx-auto flex items-center justify-between px-4">
               <Link href={"/"} className="flex items-center space-x-2">
-                <Motorcycle className="h-8 w-8" />
+                <Image
+                  src="/images/pedalcode.jpeg"
+                  alt="pedal code logo"
+                  className="h-8 w-8 rounded-full"
+                  width={32}
+                  height={32}
+                />
                 <span className="text-2xl font-bold">Pedal Code Army</span>
               </Link>
               <nav className="block">
