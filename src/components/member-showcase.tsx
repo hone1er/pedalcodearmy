@@ -52,6 +52,10 @@ const members = [
         name: "Hobbit",
         image: "/images/milisMopeds/Hobbit.JPG",
       },
+      {
+        name: "Tomos",
+        image: "/images/milisMopeds/tomos.JPG",
+      },
     ],
     instagram: "milileaks",
     youtube: "https://www.youtube.com/@benalbuckets",
