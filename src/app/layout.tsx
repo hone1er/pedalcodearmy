@@ -25,20 +25,26 @@ export default function RootLayout({
                 <Motorcycle className="h-8 w-8" />
                 <span className="text-2xl font-bold">Pedal Code Army</span>
               </Link>
-              <nav className="hidden md:block">
+              <nav className="block">
                 <ul className="flex space-x-6">
                   <li>
-                    <a href="#about" className="hover:underline">
+                    <a
+                      href="#about"
+                      className="hidden hover:underline md:block"
+                    >
                       About Our Madness
                     </a>
                   </li>
                   <li>
-                    <a href="#rides" className="hover:underline">
+                    <a
+                      href="#rides"
+                      className="hidden hover:underline md:block"
+                    >
                       Wobbly Rides
                     </a>
                   </li>
                   <li>
-                    <a href="#join" className="hover:underline">
+                    <a href="#join" className="hidden hover:underline md:block">
                       Join the Chaos
                     </a>
                   </li>
