@@ -16,20 +16,20 @@ const members = [
         image: "/images/honesMopeds/hobbit.JPG",
       },
       {
-        name: "Maxi N",
-        image: "/images/honesMopeds/maxi_n.JPG",
-      },
-      {
-        name: "Little Yellow Maxi",
-        image: "/images/honesMopeds/maxi.JPG",
-      },
-      {
         name: "Magnum II",
         image: "/images/honesMopeds/magnum.JPG",
       },
       {
         name: "Derbi Variant TT",
         image: "/images/honesMopeds/derbi.JPG",
+      },
+      {
+        name: "Maxi N",
+        image: "/images/honesMopeds/maxi_n.JPG",
+      },
+      {
+        name: "Little Yellow Maxi",
+        image: "/images/honesMopeds/maxi.JPG",
       },
     ],
     instagram: "hone1er",
@@ -50,7 +50,7 @@ const members = [
       },
       {
         name: "Hobbit",
-        image: "/images/milisMopeds/Hobbit.JPG",
+        image: "/images/milisMopeds/hobbit.JPG",
       },
       {
         name: "Tomos",
