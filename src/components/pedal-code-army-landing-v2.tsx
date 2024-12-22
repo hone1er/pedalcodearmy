@@ -44,6 +44,11 @@ export default function PedalCodeArmyLanding() {
                   Join the Chaos
                 </a>
               </li>
+              <li>
+                <a href="/members" className="hover:underline">
+                  The Dudes
+                </a>
+              </li>
             </ul>
           </nav>
         </div>
