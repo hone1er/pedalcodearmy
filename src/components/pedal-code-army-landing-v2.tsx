@@ -97,10 +97,10 @@ export default function PedalCodeArmyLanding() {
               </div>
               <div>
                 <p className="mb-4 text-lg">
-                  Born from the wild streets of East Bay, Pedal Code Army was
-                  started by Kyle Militante and Joe Villavicencio. We&apos;re a
-                  crew of skateboarders who also fell in love with the thrill of
-                  riding mopeds.
+                  Born from the streets of East Bay, Pedal Code Army was started
+                  by Kyle Militante and Joe Villavicencio. We&apos;re a crew of
+                  skateboarders who also fell in love with the thrill of riding
+                  mopeds.
                 </p>
                 <p className="mb-4 text-lg">
                   Our mission? To cruise the streets, have a blast, and maybe
