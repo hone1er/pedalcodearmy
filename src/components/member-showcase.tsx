@@ -11,7 +11,7 @@ const members = [
     bio: "Founder, moped whisperer, and designated 'are we lost?' guy",
     mopeds: [
       {
-        name: "Hobbit",
+        name: "Hobbit PA 50II",
         image: "/images/honesMopeds/hobbit.JPG",
       },
       {
@@ -19,15 +19,15 @@ const members = [
         image: "/images/honesMopeds/maxi_n.JPG",
       },
       {
-        name: "Maxi",
+        name: "Little Yellow Maxi",
         image: "/images/honesMopeds/maxi.JPG",
       },
       {
-        name: "Magnum",
+        name: "Magnum II",
         image: "/images/honesMopeds/magnum.JPG",
       },
       {
-        name: "Derbi",
+        name: "Derbi Variant TT",
         image: "/images/honesMopeds/derbi.JPG",
       },
     ],
