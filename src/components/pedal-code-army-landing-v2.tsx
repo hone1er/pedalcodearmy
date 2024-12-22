@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 export default function PedalCodeArmyLanding() {
   const [applicationContent, setApplicationContent] = useState("");
