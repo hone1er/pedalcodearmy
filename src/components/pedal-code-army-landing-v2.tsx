@@ -13,13 +13,14 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export default function PedalCodeArmyLanding() {
   const [applicationContent, setApplicationContent] = useState("");
   const [applicantName, setApplicantName] = useState("");
+
   return (
-    <div className="min-h-screen bg-[#FFD700] font-sans">
+    <div className="min-h-screen scroll-smooth bg-[#FFD700] font-sans">
       <header className="sticky top-0 z-50 bg-black py-4 text-[#FFD700]">
         <div className="container mx-auto flex items-center justify-between px-4">
           <div className="flex items-center space-x-2">
@@ -65,14 +66,18 @@ export default function PedalCodeArmyLanding() {
             <p className="mb-6 text-xl">
               East Bay&apos;s most entertaining moped gang
             </p>
-            <Button
-              size="lg"
-              className="bg-[#FFD700] text-black hover:bg-[#FFB700]"
-            >
-              Join the Madness
-            </Button>
+            <Link href="#join">
+              <Button
+                size="lg"
+                className="bg-[#FFD700] text-black hover:bg-[#FFB700]"
+              >
+                Join the Madness
+              </Button>
+            </Link>
           </div>
-          <ChevronDown className="absolute bottom-8 left-1/2 h-12 w-12 -translate-x-1/2 transform animate-bounce text-white" />
+          <Link href={"#about"}>
+            <ChevronDown className="absolute bottom-8 left-1/2 h-12 w-12 -translate-x-1/2 transform animate-bounce text-white" />
+          </Link>
         </section>
 
         <section id="about" className="bg-white py-20 text-black">
