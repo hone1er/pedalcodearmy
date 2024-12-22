@@ -49,7 +49,7 @@ export default function RootLayout({
                   </li>
                 </ul>
               </nav>
-              <nav className="md:hidden">
+              {/* <nav className="md:hidden">
                 <Button
                   size="lg"
                   className="bg-[#FFD700] text-black hover:bg-[#FFB700]"
@@ -70,7 +70,7 @@ export default function RootLayout({
                     The Dudes
                   </a>
                 </div>
-              </nav>
+              </nav> */}
             </div>
           </header>
           {children}
