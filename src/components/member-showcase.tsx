@@ -1,3 +1,4 @@
+"use client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { BikeIcon as Motorcycle, Instagram, Youtube } from "lucide-react";
@@ -78,6 +79,10 @@ const members = [
 ];
 
 export default function MemberShowcase() {
+  const [selectedMoped, setSelectedMoped] = useState<{
+    name: string;
+    image: string;
+  } | null>(null);
   return (
     <div className="container mx-auto px-4 py-12">
       <h1 className="mb-12 text-center text-4xl font-bold md:text-5xl">
@@ -128,20 +133,43 @@ export default function MemberShowcase() {
                         key={mopedIndex}
                         className="overflow-hidden rounded-lg bg-gray-100 p-2 shadow-md"
                       >
-                        <div className="relative pb-[75%]">
-                          <Image
-                            src={moped.image}
-                            alt={moped.name}
-                            layout="fill"
-                            objectFit="contain"
-                            objectPosition="center"
-                          />
-                        </div>
-                        <div className="p-2">
-                          <p className="text-center font-semibold">
-                            {moped.name}
-                          </p>
-                        </div>
+                        <Dialog>
+                          <DialogTrigger asChild>
+                            <div>
+                              <h2 className="mb-2 text-center text-xl font-semibold">
+                                {moped.name}
+                              </h2>
+                              <div
+                                className="relative cursor-pointer pb-[75%]"
+                                onClick={() => setSelectedMoped(moped)}
+                              >
+                                <Image
+                                  src={moped.image}
+                                  alt={moped.name}
+                                  layout="fill"
+                                  objectFit="contain"
+                                  objectPosition="center"
+                                />
+                              </div>
+                            </div>
+                          </DialogTrigger>
+                          <DialogContent className="px-0">
+                            <DialogHeader>
+                              <DialogTitle>{moped.name}</DialogTitle>
+                              <DialogDescription>
+                                <div className="relative h-[75vh] w-full">
+                                  <Image
+                                    src={moped.image}
+                                    alt={moped.name}
+                                    layout="fill"
+                                    objectFit="contain"
+                                    objectPosition="center"
+                                  />
+                                </div>
+                              </DialogDescription>
+                            </DialogHeader>
+                          </DialogContent>
+                        </Dialog>
                       </div>
                     ))}
                   </div>
@@ -154,3 +182,12 @@ export default function MemberShowcase() {
     </div>
   );
 }
+import React, { useState } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "./ui/dialog";
