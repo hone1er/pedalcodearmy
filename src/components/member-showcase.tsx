@@ -42,7 +42,15 @@ const members = [
     mopeds: [
       {
         name: "Magnum",
-        image: "/images/milisMopeds/magnum.jpeg",
+        image: "/images/milisMopeds/magnum.JPG",
+      },
+      {
+        name: "Pinto",
+        image: "/images/milisMopeds/pinto.JPG",
+      },
+      {
+        name: "Hobbit",
+        image: "/images/milisMopeds/Hobbit.JPG",
       },
     ],
     instagram: "milileaks",
@@ -153,20 +161,18 @@ export default function MemberShowcase() {
                               </div>
                             </div>
                           </DialogTrigger>
-                          <DialogContent className="px-0">
+                          <DialogContent className="px-2">
                             <DialogHeader>
                               <DialogTitle>{moped.name}</DialogTitle>
-                              <DialogDescription>
-                                <div className="relative h-[75vh] w-full">
-                                  <Image
-                                    src={moped.image}
-                                    alt={moped.name}
-                                    layout="fill"
-                                    objectFit="contain"
-                                    objectPosition="center"
-                                  />
-                                </div>
-                              </DialogDescription>
+                              <div className="relative h-[75vh] w-full">
+                                <Image
+                                  src={moped.image}
+                                  alt={moped.name}
+                                  layout="fill"
+                                  objectFit="contain"
+                                  objectPosition="center"
+                                />
+                              </div>
                             </DialogHeader>
                           </DialogContent>
                         </Dialog>
