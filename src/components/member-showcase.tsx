@@ -19,7 +19,7 @@ const members = [
     mopeds: [
       {
         name: "Hobbit PA 50II",
-        image: "/images/honesMopeds/hobbit.JPG",
+        image: "/images/honesMopeds/hobbit.jpeg",
         setup: {
           kit: "Stocko shocko",
           carb: "Mikuni VM20",
