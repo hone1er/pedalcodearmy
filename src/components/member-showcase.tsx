@@ -141,6 +141,19 @@ const members = [
     img: "mili.jpeg",
   },
   {
+    name: "Joshua Willing",
+    bio: "Early member, moped mechanic extraordinaire, and collector of 'spare parts'",
+    mopeds: [
+      {
+        name: "Maxi",
+        image: "/images/jdubsMopeds/maxi.JPG",
+      },
+    ],
+    instagram: "femoresroom",
+    youtube: "https://www.youtube.com/@benalbuckets",
+    img: "jdub.jpg",
+  },
+  {
     name: "Isabel Muñoz",
     bio: "First lady of the group, moped rider, and snack provider",
     mopeds: [
@@ -179,19 +192,6 @@ const members = [
     instagram: "lydia_deets_",
     youtube: "https://www.youtube.com/@benalbuckets",
     img: "lydia.jpeg",
-  },
-  {
-    name: "Joshua Willing",
-    bio: "Early member, moped mechanic extraordinaire, and collector of 'spare parts'",
-    mopeds: [
-      {
-        name: "Maxi",
-        image: "/images/jdubsMopeds/maxi.JPG",
-      },
-    ],
-    instagram: "femoresroom",
-    youtube: "https://www.youtube.com/@benalbuckets",
-    img: "placeholder.svg?height=300&width=400&text=Joshua",
   },
 ];
 
