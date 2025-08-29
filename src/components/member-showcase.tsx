@@ -18,16 +18,6 @@ const members = [
     bio: "Founder, moped whisperer, and designated 'are we lost?' guy",
     mopeds: [
       {
-        name: "Hobbit PA 50II",
-        image: "/images/honesMopeds/hobbit.jpeg",
-        setup: {
-          kit: "Stocko shocko",
-          carb: "Mikuni VM20",
-          pipe: "Proma",
-          variator: "Treats Prototype",
-        },
-      },
-      {
         name: "Magnum II",
         image: "/images/honesMopeds/magnum.JPG",
         setup: {
@@ -38,12 +28,42 @@ const members = [
       },
       {
         name: "Derbi Variant TT",
-        image: "/images/honesMopeds/derbi.JPG",
+        image: "/images/honesMopeds/derbi.jpeg",
         setup: {
           kit: "stock",
           carb: "Dellorto 15.15 SHA",
           pipe: "Tecno Boss",
           variator: "Stock",
+        },
+      },
+      {
+        name: "Derbi Variant SL '79",
+        image: "/images/honesMopeds/blackderbisl.jpeg",
+        setup: {
+          kit: "Autisa 65cc",
+          carb: "Dellorto 15.15 SHA",
+          pipe: "Estoril",
+          variator: "Hobbit X-treme clutch bell w/ TJT",
+        },
+      },
+      {
+        name: "Derbi Variant SL '86",
+        image: "/images/honesMopeds/whitederbisl.jpeg",
+        setup: {
+          kit: "stock",
+          carb: "Dellorto 15.15 SHA",
+          pipe: "Tecno Boss",
+          variator: "Stock",
+        },
+      },
+      {
+        name: "Derbi RD 50",
+        image: "/images/honesMopeds/rd50.jpeg",
+        setup: {
+          kit: "Metrakit 65cc",
+          carb: "Dellorto 15.15 SHA",
+          pipe: "Stock",
+          variator: "TJT",
         },
       },
       {
@@ -64,6 +84,36 @@ const members = [
           pipe: "Tecno Boss",
         },
       },
+      {
+        name: "Hobbit PA 50I",
+        image: "/images/honesMopeds/redracehobbit.jpeg",
+        setup: {
+          kit: "Polini 70cc",
+          carb: "Mikuni VM20",
+          pipe: "Custom Crank Pipes",
+          variator: "Treats",
+        },
+      },
+      {
+        name: "Hobbit PA 50II",
+        image: "/images/honesMopeds/yellowhobbit.jpeg",
+        setup: {
+          kit: "DR kit",
+          carb: "Stock clone",
+          pipe: "Stock pipe",
+          variator: "Treats",
+        },
+      },
+      {
+        name: "Hobbit PA 50II (CRASHED - RIP)",
+        image: "/images/honesMopeds/hobbit.jpeg",
+        setup: {
+          kit: "Stocko shocko",
+          carb: "Mikuni VM20",
+          pipe: "Proma",
+          variator: "Treats Prototype",
+        },
+      },
     ],
     instagram: "hone1er",
     youtube: "https://www.youtube.com/@joevillavicencio4718",
@@ -82,10 +132,6 @@ const members = [
         image: "/images/milisMopeds/pinto.JPG",
       },
       {
-        name: "Hobbit",
-        image: "/images/milisMopeds/hobbit.JPG",
-      },
-      {
         name: "Tomos",
         image: "/images/milisMopeds/tomos.JPG",
       },
@@ -94,19 +140,45 @@ const members = [
     youtube: "https://www.youtube.com/@benalbuckets",
     img: "mili.jpeg",
   },
+  {
+    name: "Isabel Muñoz",
+    bio: "First lady of the group, moped rider, and snack provider",
+    mopeds: [
+      {
+        name: "Hobbit",
+        image: "/images/izzysMopeds/redhobbit.jpeg",
+      },
+    ],
+    instagram: "isssssabel_m",
+    youtube: "https://www.youtube.com/@benalbuckets",
+    img: "izzy.jpeg",
+  },
 
   {
     name: "Alex Baranda",
     bio: "Early member, another skater, and the researcher of moped mods",
     mopeds: [
       {
-        name: "Maxi",
-        image: "/images/alexsMopeds/maxi.jpeg",
+        name: "Dirt Hobbit",
+        image: "/images/alexsMopeds/dirthobbit.jpeg",
       },
     ],
     instagram: "sensifunoner",
     youtube: "https://www.youtube.com/@benalbuckets",
-    img: "placeholder.svg?height=300&width=400&text=Alex",
+    img: "alex.jpeg",
+  },
+  {
+    name: "Lydia Vieyra",
+    bio: "Hobbit enjoyer and the group's morale booster",
+    mopeds: [
+      {
+        name: "Maxi",
+        image: "/images/alexsMopeds/maxi.jpeg",
+      },
+    ],
+    instagram: "lydia_deets_",
+    youtube: "https://www.youtube.com/@benalbuckets",
+    img: "lydia.jpeg",
   },
   {
     name: "Joshua Willing",
