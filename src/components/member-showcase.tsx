@@ -114,6 +114,10 @@ const members = [
           variator: "Treats Prototype",
         },
       },
+      {
+        name: "Garelli SSXL LTD",
+        image: "/images/honesMopeds/ssxl.jpeg",
+      },
     ],
     instagram: "hone1er",
     youtube: "https://www.youtube.com/@joevillavicencio4718",

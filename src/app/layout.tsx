@@ -35,25 +35,28 @@ export default function RootLayout({
               <nav className="block">
                 <ul className="flex space-x-6">
                   <li>
-                    <a
-                      href="#about"
+                    <Link
+                      href="/#about"
                       className="hidden hover:underline md:block"
                     >
                       About Our Madness
-                    </a>
+                    </Link>
                   </li>
                   <li>
-                    <a
-                      href="#rides"
+                    <Link
+                      href="/#rides"
                       className="hidden hover:underline md:block"
                     >
                       Wobbly Rides
-                    </a>
+                    </Link>
                   </li>
                   <li>
-                    <a href="#join" className="hidden hover:underline md:block">
+                    <Link
+                      href="/#join"
+                      className="hidden hover:underline md:block"
+                    >
                       Join the Chaos
-                    </a>
+                    </Link>
                   </li>
                   <li>
                     <a href="/members" className="hover:underline">
