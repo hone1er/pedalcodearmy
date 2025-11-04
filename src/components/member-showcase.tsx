@@ -11,6 +11,42 @@ import {
 import Image from "next/image";
 import Link from "next/link";
 
+const EUROPEAN_MEMBERS = [
+  {
+    name: "Driss",
+    country: "France",
+    image: "/images/euros/driss/driss.jpeg",
+    instagram: "driss_blz",
+    bio: "Our first French dude!",
+    mopeds: [
+      { name: "Maxi S", image: "/images/euros/driss/blue_maxi.jpeg" },
+      { name: "Maxi", image: "/images/euros/driss/silver_maxi.jpeg" },
+      { name: "Maxi", image: "/images/euros/driss/black_maxi.jpeg" },
+      { name: "Maxi", image: "/images/euros/driss/grey_maxi.jpeg" },
+      { name: "Puch Magnum", image: "/images/euros/driss/puch_magnum.jpeg" },
+      { name: "Puch Magnum", image: "/images/euros/driss/red_magnum.jpeg" },
+      { name: "X-10s", image: "/images/euros/driss/x_10s.jpeg" },
+    ],
+  },
+  {
+    name: "Nils Rösner",
+    country: "Germany",
+    image: "/images/euros/nils/nils.jpeg",
+    instagram: "rosnernils",
+    bio: "Representing Germany!",
+    mopeds: [
+      {
+        name: "KTM Hobby & Piaggio Ciao",
+        image: "/images/euros/nils/ktm_ciao.jpeg",
+      },
+      {
+        name: "Zündapp Bergsteiger/434",
+        image: "/images/euros/nils/zundapp.jpeg",
+      },
+    ],
+  },
+];
+
 // This would typically come from a database or API
 const members = [
   {
@@ -384,6 +420,78 @@ export default function MemberShowcase() {
             </CardContent>
           </Card>
         ))}
+      </div>
+      {/* European Division member section */}
+      <div className="mt-16 text-center">
+        <h2 className="mb-4 text-3xl font-bold">European Division</h2>
+        <p className="mb-2 font-thin text-gray-400">
+          Shoutout to our European members/pledges,{" "}
+        </p>
+        <p className="mb-8 font-thin text-gray-400">
+          bringing the moped love across the pond!
+        </p>
+        <div className="grid gap-12" id="european-members">
+          {EUROPEAN_MEMBERS.map((member, index) => (
+            <Card key={index} className="bg-white shadow-xl">
+              <CardContent className="p-6">
+                <div className="flex flex-col gap-6 md:flex-row">
+                  <div className="md:w-1/3">
+                    <div className="relative mb-4 w-full overflow-hidden rounded-full pb-[100%]">
+                      <Image
+                        src={member.image}
+                        alt={member.name}
+                        layout="fill"
+                        objectFit="cover"
+                        objectPosition="top"
+                      />
+                    </div>
+                    <h2 className="mb-2 text-center text-2xl font-bold">
+                      {member.name} - {member.country}
+                    </h2>
+
+                    <p className="mb-4 text-center text-gray-600">
+                      {member.bio}
+                    </p>
+                    <div className="flex justify-center space-x-4">
+                      <Link
+                        href={`https://instagram.com/${member.instagram}`}
+                        className="text-pink-500 hover:text-pink-600"
+                      >
+                        <Instagram size={24} />
+                      </Link>
+                    </div>
+                  </div>
+                  <div className="md:w-2/3">
+                    <h3 className="mb-4 text-xl font-semibold">
+                      Moped Collection
+                    </h3>
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                      {member.mopeds.map((moped, mopedIndex) => (
+                        <div
+                          key={mopedIndex}
+                          className="overflow-hidden rounded-lg bg-gray-100 p-2 shadow-md"
+                        >
+                          <h2 className="mb-2 text-center text-xl font-semibold">
+                            {moped.name}
+                          </h2>
+                          <div className="relative pb-[75%]">
+                            <Image
+                              src={moped.image}
+                              alt={moped.name}
+                              layout="fill"
+                              objectFit="contain"
+                              objectPosition="center"
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       </div>
     </div>
   );
