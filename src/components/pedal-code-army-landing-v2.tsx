@@ -16,8 +16,9 @@ import Link from "next/link";
 import { useState } from "react";
 
 export default function PedalCodeArmyLanding() {
-  const [applicationContent, setApplicationContent] = useState("");
-  const [applicantName, setApplicantName] = useState("");
+  const [inquiryMessage, setInquiryMessage] = useState("");
+  const [inquiryName, setInquiryName] = useState("");
+  const [inquiryType, setInquiryType] = useState("");
 
   return (
     <main>
@@ -37,12 +38,12 @@ export default function PedalCodeArmyLanding() {
           <p className="mb-6 text-xl">
             East Bay&apos;s most entertaining moped gang
           </p>
-          <Link href="#join">
+          <Link href="#contact">
             <Button
               size="lg"
               className="bg-[#FFD700] text-black hover:bg-[#FFB700]"
             >
-              Join the Madness
+              Get in Touch
             </Button>
           </Link>
         </div>
@@ -135,39 +136,49 @@ export default function PedalCodeArmyLanding() {
         </div>
       </section>
 
-      <section id="join" className="bg-white py-20 text-black">
+      <section id="contact" className="bg-white py-20 text-black">
         <div className="container mx-auto px-4">
           <h2 className="mb-8 text-center text-4xl font-bold">
-            Join the Pedal Code Army
+            Contact Us
           </h2>
           <p className="mb-12 text-center text-xl">
-            Think you&apos;ve got what it takes to be a moped miscreant? Apply
-            now!
+            Need 3D printed moped parts? Looking to buy or sell a moped? Got a
+            ride that needs some love? Hit us up!
           </p>
           <form className="mx-auto max-w-md space-y-6">
             <Input
               type="text"
-              placeholder="Your Name (or cool moped nickname)"
+              placeholder="Your Name"
               className="w-full p-3 text-lg"
-              value={applicantName}
-              onChange={(e) => setApplicantName(e.target.value)}
+              value={inquiryName}
+              onChange={(e) => setInquiryName(e.target.value)}
             />
-
+            <select
+              className="w-full rounded-md border border-gray-300 p-3 text-lg"
+              value={inquiryType}
+              onChange={(e) => setInquiryType(e.target.value)}
+            >
+              <option value="">What can we help you with?</option>
+              <option value="3D Printed Parts">3D Printed Moped Parts</option>
+              <option value="Moped Sales">Moped Sales</option>
+              <option value="Repairs">Moped Repairs</option>
+              <option value="Other">Other</option>
+            </select>
             <Textarea
-              placeholder="Tell us about your moped (or the one you're eyeing on Craigslist)"
+              placeholder="Tell us more about what you need..."
               className="w-full p-3 text-lg"
               rows={4}
-              value={applicationContent}
-              onChange={(e) => setApplicationContent(e.target.value)}
+              value={inquiryMessage}
+              onChange={(e) => setInquiryMessage(e.target.value)}
             />
             <Link
-              href={`mailto:pedalcodearmy@gmail.com?subject=Join%20the%20Pedal%20Code%20Army&body=Hi I'm ${applicantName} and here is some info about my moped! ${applicationContent}`}
+              href={`mailto:pedalcodearmy@gmail.com?subject=${encodeURIComponent(inquiryType || 'Inquiry')}&body=${encodeURIComponent(`Hi, I'm ${inquiryName}.\n\n${inquiryMessage}`)}`}
             >
               <Button
                 size="lg"
                 className="mt-4 w-full bg-black text-lg text-[#FFD700] hover:bg-gray-800"
               >
-                Submit Application
+                Send Inquiry
               </Button>
             </Link>
           </form>
