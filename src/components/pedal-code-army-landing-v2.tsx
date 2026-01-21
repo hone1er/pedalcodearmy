@@ -3,7 +3,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  BikeIcon as Motorcycle,
   Wrench,
   MapPin,
   Calendar,
@@ -138,9 +137,7 @@ export default function PedalCodeArmyLanding() {
 
       <section id="contact" className="bg-white py-20 text-black">
         <div className="container mx-auto px-4">
-          <h2 className="mb-8 text-center text-4xl font-bold">
-            Contact Us
-          </h2>
+          <h2 className="mb-8 text-center text-4xl font-bold">Contact Us</h2>
           <p className="mb-12 text-center text-xl">
             Need 3D printed moped parts? Looking to buy or sell a moped? Got a
             ride that needs some love? Hit us up!
@@ -172,7 +169,7 @@ export default function PedalCodeArmyLanding() {
               onChange={(e) => setInquiryMessage(e.target.value)}
             />
             <Link
-              href={`mailto:pedalcodearmy@gmail.com?subject=${encodeURIComponent(inquiryType || 'Inquiry')}&body=${encodeURIComponent(`Hi, I'm ${inquiryName}.\n\n${inquiryMessage}`)}`}
+              href={`mailto:pedalcodearmy@gmail.com?subject=${encodeURIComponent(inquiryType || "Inquiry")}&body=${encodeURIComponent(`Hi, I'm ${inquiryName}.\n\n${inquiryMessage}`)}`}
             >
               <Button
                 size="lg"

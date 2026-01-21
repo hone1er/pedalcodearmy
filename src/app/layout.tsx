@@ -1,6 +1,4 @@
-import { Button } from "@/components/ui/button";
 import "@/styles/globals.css";
-import { BikeIcon as Motorcycle } from "lucide-react";
 import { GeistSans } from "geist/font/sans";
 import { type Metadata } from "next";
 import Link from "next/link";
@@ -59,9 +57,14 @@ export default function RootLayout({
                     </Link>
                   </li>
                   <li>
-                    <a href="/members" className="hover:underline">
+                    <Link href="/shop" className="hover:underline">
+                      Shop
+                    </Link>
+                  </li>
+                  <li>
+                    <Link href="/members" className="hover:underline">
                       The Dudes
-                    </a>
+                    </Link>
                   </li>
                 </ul>
               </nav>
