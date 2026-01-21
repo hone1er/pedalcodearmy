@@ -1,13 +1,7 @@
 "use client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import {
-  BikeIcon as Motorcycle,
-  Instagram,
-  Youtube,
-  ArrowLeft,
-  ArrowRight,
-} from "lucide-react";
+import { Instagram, Youtube, ArrowLeft, ArrowRight } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 
