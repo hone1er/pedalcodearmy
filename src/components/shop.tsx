@@ -154,6 +154,7 @@ const PRINTED_PARTS = [
       "2x M10x1.25x60mm bolts",
       "2x Concave spring washers",
     ],
+    availability: "Feb 1",
   },
   {
     id: "chain-tensioner",
@@ -168,6 +169,7 @@ const PRINTED_PARTS = [
       "1x M5x25mm bolt",
       "2x M5 washers",
     ],
+    availability: "Mid February",
   },
   {
     id: "ram-airbox",
@@ -177,6 +179,7 @@ const PRINTED_PARTS = [
     price: "TBD",
     image: null,
     includes: null,
+    availability: "Coming Soon",
   },
 ];
 
@@ -314,7 +317,7 @@ export default function Shop() {
                     <span className="text-2xl font-black text-black">
                       {part.price}
                     </span>
-                    <RetroBadge color="orange">Coming Soon</RetroBadge>
+                    <RetroBadge color="orange">{part.availability}</RetroBadge>
                   </div>
                   <Link
                     href={`mailto:pedalcodearmy@gmail.com?subject=Waitlist: ${encodeURIComponent(part.name)}&body=${encodeURIComponent(`Hi, I'd like to join the waitlist for:\n\nProduct: ${part.name}\n\nPlease notify me when it's available!`)}`}
