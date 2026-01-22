@@ -53,16 +53,14 @@ export default function RootLayout({
                       href="/#join"
                       className="hidden hover:underline md:block"
                     >
-                      Join the Chaos
+                      Hit us up!
                     </Link>
                   </li>
-                  {/* Shop link hidden until Shopify is ready
                   <li>
                     <Link href="/shop" className="hover:underline">
                       Shop
                     </Link>
                   </li>
-                  */}
                   <li>
                     <Link href="/members" className="hover:underline">
                       The Dudes
