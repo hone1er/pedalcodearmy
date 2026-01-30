@@ -1,6 +1,16 @@
 "use client";
 
+import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import {
   Printer,
   BikeIcon as Motorcycle,
@@ -8,6 +18,7 @@ import {
   Package,
   Bell,
   Star,
+  Check,
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
@@ -138,6 +149,136 @@ function RetroBadge({
     >
       {children}
     </span>
+  );
+}
+
+function WaitlistButton({ productName, productPrice }: { productName: string; productPrice: string }) {
+  const [open, setOpen] = useState(false);
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    setError("");
+
+    try {
+      const response = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          product: productName,
+          customerName: name,
+          customerEmail: email,
+          quantity: 1,
+          estimatedPrice: productPrice,
+          isCustom: false,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = (await response.json()) as { error?: string };
+        throw new Error(data.error ?? "Failed to join waitlist");
+      }
+
+      setIsSuccess(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleClose = () => {
+    setOpen(false);
+    // Reset form after closing
+    setTimeout(() => {
+      setEmail("");
+      setName("");
+      setIsSuccess(false);
+      setError("");
+    }, 300);
+  };
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className="flex w-full items-center justify-center gap-2 rounded-none border-2 border-black bg-black py-3 text-sm font-black uppercase text-[#FFD700] transition-all hover:bg-gray-900 hover:shadow-[4px_4px_0px_0px_rgba(255,165,0,1)]"
+      >
+        <Bell className="h-4 w-4" />
+        Get Notified
+      </button>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="rounded-none border-4 border-black bg-white shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-black uppercase text-black">
+              Join the Waitlist
+            </DialogTitle>
+            <DialogDescription className="text-gray-600">
+              Get notified when <span className="font-bold text-black">{productName}</span> is available.
+            </DialogDescription>
+          </DialogHeader>
+
+          {isSuccess ? (
+            <div className="py-6 text-center">
+              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
+                <Check className="h-6 w-6 text-green-600" />
+              </div>
+              <h3 className="mb-2 text-lg font-black uppercase text-black">You&apos;re on the list!</h3>
+              <p className="text-sm text-gray-600">We&apos;ll email you when it&apos;s ready.</p>
+              <Button
+                onClick={handleClose}
+                className="mt-4 rounded-none border-2 border-black bg-black text-[#FFD700] hover:bg-gray-900"
+              >
+                Close
+              </Button>
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="mb-2 block text-sm font-bold text-black">Name</label>
+                <Input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  required
+                  placeholder="Your name"
+                  className="rounded-none border-2 border-black"
+                />
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-bold text-black">Email</label>
+                <Input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  placeholder="you@example.com"
+                  className="rounded-none border-2 border-black"
+                />
+              </div>
+
+              {error && (
+                <p className="text-sm font-bold text-red-600">{error}</p>
+              )}
+
+              <Button
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full rounded-none border-2 border-black bg-[#FFD700] py-3 font-black uppercase text-black hover:bg-yellow-400 disabled:opacity-50"
+              >
+                {isSubmitting ? "Joining..." : "Join Waitlist"}
+              </Button>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -362,13 +503,7 @@ export default function Shop() {
                     </>
                   ) : (
                     <>
-                      <Link
-                        href={`mailto:pedalcodearmy@gmail.com?subject=Waitlist: ${encodeURIComponent(part.name)}&body=${encodeURIComponent(`Hi, I'd like to join the waitlist for:\n\nProduct: ${part.name}\n\nPlease notify me when it's available!`)}`}
-                        className="flex w-full items-center justify-center gap-2 rounded-none border-2 border-black bg-black py-3 text-sm font-black uppercase text-[#FFD700] transition-all hover:bg-gray-900 hover:shadow-[4px_4px_0px_0px_rgba(255,165,0,1)]"
-                      >
-                        <Bell className="h-4 w-4" />
-                        Get Notified
-                      </Link>
+                      <WaitlistButton productName={part.name} productPrice={part.price} />
                       <p className="mt-2 text-center text-[10px] font-bold uppercase tracking-wide text-gray-500">
                         No payment until it&apos;s ready to ship
                       </p>
