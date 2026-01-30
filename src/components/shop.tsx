@@ -143,6 +143,22 @@ function RetroBadge({
 
 const PRINTED_PARTS = [
   {
+    id: "side-covers",
+    name: "Puch Magnum Side Covers",
+    description:
+      "3D printed side covers - plain or with your own custom embossed text. Preview your design before ordering.",
+    price: "$45-$50",
+    priceLabel: "per side",
+    image: "/images/products/SideCoverRight.png",
+    includes: [
+      "3D printed Puch Magnum side cover",
+      "Plain: $45 | Custom text: $50",
+      "Durable PETG material",
+    ],
+    availability: "Coming Soon",
+    customizable: true,
+  },
+  {
     id: "fork-spacers",
     name: "Honda Hobbit Fork Spacers",
     description:
@@ -316,19 +332,38 @@ export default function Shop() {
                   <div className="mb-2 flex items-center justify-between">
                     <span className="text-2xl font-black text-black">
                       {part.price}
+                      {part.priceLabel && (
+                        <span className="text-sm font-bold text-gray-500"> {part.priceLabel}</span>
+                      )}
                     </span>
                     <RetroBadge color="orange">{part.availability}</RetroBadge>
                   </div>
-                  <Link
-                    href={`mailto:pedalcodearmy@gmail.com?subject=Waitlist: ${encodeURIComponent(part.name)}&body=${encodeURIComponent(`Hi, I'd like to join the waitlist for:\n\nProduct: ${part.name}\n\nPlease notify me when it's available!`)}`}
-                    className="flex w-full items-center justify-center gap-2 rounded-none border-2 border-black bg-black py-3 text-sm font-black uppercase text-[#FFD700] transition-all hover:bg-gray-900 hover:shadow-[4px_4px_0px_0px_rgba(255,165,0,1)]"
-                  >
-                    <Bell className="h-4 w-4" />
-                    Get Notified
-                  </Link>
-                  <p className="mt-2 text-center text-[10px] font-bold uppercase tracking-wide text-gray-500">
-                    No payment until it&apos;s ready to ship
-                  </p>
+                  {part.customizable ? (
+                    <>
+                      <Link
+                        href="/shop/side-covers"
+                        className="flex w-full items-center justify-center gap-2 rounded-none border-2 border-black bg-[#FFD700] py-3 text-sm font-black uppercase text-black transition-all hover:bg-yellow-400 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
+                      >
+                        Customize Yours
+                      </Link>
+                      <p className="mt-2 text-center text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                        Preview your custom text before ordering
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <Link
+                        href={`mailto:pedalcodearmy@gmail.com?subject=Waitlist: ${encodeURIComponent(part.name)}&body=${encodeURIComponent(`Hi, I'd like to join the waitlist for:\n\nProduct: ${part.name}\n\nPlease notify me when it's available!`)}`}
+                        className="flex w-full items-center justify-center gap-2 rounded-none border-2 border-black bg-black py-3 text-sm font-black uppercase text-[#FFD700] transition-all hover:bg-gray-900 hover:shadow-[4px_4px_0px_0px_rgba(255,165,0,1)]"
+                      >
+                        <Bell className="h-4 w-4" />
+                        Get Notified
+                      </Link>
+                      <p className="mt-2 text-center text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                        No payment until it&apos;s ready to ship
+                      </p>
+                    </>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -385,7 +420,9 @@ export default function Shop() {
                 </p>
                 <div className="border-t-2 border-black pt-3">
                   <div className="mb-3 text-center">
-                    <span className="text-3xl font-black text-black">{moped.price}</span>
+                    <span className="text-3xl font-black text-black">
+                      {moped.price}
+                    </span>
                   </div>
                   <Link
                     href="mailto:pedalcodearmy@gmail.com?subject=Interested in Puch Maxi N&body=Hi, I'm interested in the Puch Maxi N you have for sale. Is it still available?"
