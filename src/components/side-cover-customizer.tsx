@@ -131,6 +131,8 @@ export default function SideCoverCustomizer() {
     message: "",
   });
   const [formSubmitted, setFormSubmitted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
 
   const handleTextChange = (side: "left" | "right", value: string) => {
     if (value.length <= 15) {
@@ -149,44 +151,54 @@ export default function SideCoverCustomizer() {
   };
 
   const getPrice = () => {
-    const basePrice = hasCustomText() ? 50 : 45;
+    const basePrice = hasCustomText() ? 60 : 50;
     return selectedSide === "both" ? `$${basePrice * 2}` : `$${basePrice}`;
   };
 
-  const handleFormSubmit = (e: React.FormEvent) => {
+  const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmitting(true);
+    setSubmitError("");
 
     const isCustom = hasCustomText();
-    const subject = encodeURIComponent(
-      `Side Cover Waitlist - ${isCustom ? "Custom" : "Plain"}`,
-    );
+    const quantity = selectedSide === "both" ? 2 : 1;
 
-    let orderDetails = "";
-    if (isCustom) {
-      if (selectedSide === "left" || selectedSide === "both") {
-        orderDetails += `Left Side Text: "${leftText || "(no text)"}"\n`;
+    try {
+      const response = await fetch("/api/orders", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          product: "Puch Magnum Side Cover",
+          customerName: formData.name,
+          customerEmail: formData.email,
+          quantity,
+          sideOption: selectedSide,
+          leftText: leftText || null,
+          rightText: rightText || null,
+          font: FONTS.find((f) => f.value === selectedFont)?.label ?? "Arial",
+          textSize: SIZE_OPTIONS.find((s) => s.value === fontSize)?.label ?? "Medium",
+          isCustom,
+          estimatedPrice: getPrice(),
+          notes: formData.message || null,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = (await response.json()) as { error?: string };
+        throw new Error(data.error ?? "Failed to submit order");
       }
-      if (selectedSide === "right" || selectedSide === "both") {
-        orderDetails += `Right Side Text: "${rightText || "(no text)"}"\n`;
-      }
-      orderDetails += `Font: ${FONTS.find((f) => f.value === selectedFont)?.label ?? "Arial"}\n`;
-      orderDetails += `Size: ${SIZE_OPTIONS.find((s) => s.value === fontSize)?.label ?? "Medium"}\n`;
-    } else {
-      orderDetails = "Plain (no custom text)\n";
+
+      setFormSubmitted(true);
+    } catch (error) {
+      console.error("Error submitting order:", error);
+      setSubmitError(
+        error instanceof Error ? error.message : "Failed to submit. Please try again."
+      );
+    } finally {
+      setIsSubmitting(false);
     }
-
-    const body = encodeURIComponent(
-      `Name: ${formData.name}\n` +
-        `Email: ${formData.email}\n\n` +
-        `Order: ${selectedSide === "both" ? "Both Sides" : `${selectedSide.charAt(0).toUpperCase() + selectedSide.slice(1)} Side Only`}\n` +
-        `Type: ${isCustom ? "Custom Text" : "Plain"}\n` +
-        orderDetails +
-        `Price: ${getPrice()}\n\n` +
-        `Additional Notes:\n${formData.message}`,
-    );
-
-    window.location.href = `mailto:pedalcodearmy@gmail.com?subject=${subject}&body=${body}`;
-    setFormSubmitted(true);
   };
 
   return (
@@ -544,12 +556,25 @@ export default function SideCoverCustomizer() {
                   />
                 </div>
 
+                {submitError && (
+                  <div className="rounded-none border-2 border-red-500 bg-red-50 p-3 text-center">
+                    <p className="text-sm font-bold text-red-600">{submitError}</p>
+                  </div>
+                )}
+
                 <Button
                   type="submit"
-                  className="w-full rounded-none border-2 border-black bg-[#FFD700] py-6 text-lg font-black uppercase text-black transition-all hover:bg-yellow-400 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
+                  disabled={isSubmitting}
+                  className="w-full rounded-none border-2 border-black bg-[#FFD700] py-6 text-lg font-black uppercase text-black transition-all hover:bg-yellow-400 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <Send className="mr-2 h-5 w-5" />
-                  Join Waitlist
+                  {isSubmitting ? (
+                    "Submitting..."
+                  ) : (
+                    <>
+                      <Send className="mr-2 h-5 w-5" />
+                      Join Waitlist
+                    </>
+                  )}
                 </Button>
 
                 <p className="text-center text-xs text-gray-500">
