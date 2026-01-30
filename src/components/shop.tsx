@@ -230,6 +230,13 @@ export default function Shop() {
           Keeping vintage two-strokes alive since recently
         </p>
 
+        {/* Shipping Banner */}
+        <div className="mx-auto mb-6 max-w-md rounded-none border-2 border-black bg-[#FFD700] px-4 py-2 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">
+          <p className="text-sm font-black uppercase text-black">
+            Free Shipping on Orders Over $99
+          </p>
+        </div>
+
         <div className="mx-auto max-w-2xl rounded-none border-4 border-black bg-white p-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
           <p className="mb-4 text-gray-800">
             We design and print parts for the mopeds manufacturers forgot about.

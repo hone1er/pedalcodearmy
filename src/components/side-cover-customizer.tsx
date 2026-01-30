@@ -227,7 +227,8 @@ export default function SideCoverCustomizer() {
             <span className="font-bold text-black">Custom Text</span>
             <span className="font-black text-black">$50</span>
           </div>
-          <p className="mt-2 text-center text-xs text-gray-500">per cover</p>
+          <p className="mt-2 text-center text-xs text-gray-500">per cover • + shipping</p>
+          <p className="text-center text-xs font-bold text-orange-600">Free shipping on orders over $99</p>
         </div>
       </div>
 
