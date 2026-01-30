@@ -147,12 +147,12 @@ const PRINTED_PARTS = [
     name: "Puch Magnum Side Covers",
     description:
       "3D printed side covers - plain or with your own custom embossed text. Preview your design before ordering.",
-    price: "$45-$50",
+    price: "$50-$60",
     priceLabel: "per side",
     image: "/images/products/SideCoverRight.png",
     includes: [
       "3D printed Puch Magnum side cover",
-      "Plain: $45 | Custom text: $50",
+      "Plain: $50 | Custom text: $60  per side",
       "Durable PETG material",
     ],
     availability: "Coming Soon",
@@ -340,7 +340,10 @@ export default function Shop() {
                     <span className="text-2xl font-black text-black">
                       {part.price}
                       {part.priceLabel && (
-                        <span className="text-sm font-bold text-gray-500"> {part.priceLabel}</span>
+                        <span className="text-sm font-bold text-gray-500">
+                          {" "}
+                          {part.priceLabel}
+                        </span>
                       )}
                     </span>
                     <RetroBadge color="orange">{part.availability}</RetroBadge>

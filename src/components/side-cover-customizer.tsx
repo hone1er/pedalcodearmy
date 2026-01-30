@@ -157,7 +157,9 @@ export default function SideCoverCustomizer() {
     e.preventDefault();
 
     const isCustom = hasCustomText();
-    const subject = encodeURIComponent(`Side Cover Waitlist - ${isCustom ? "Custom" : "Plain"}`);
+    const subject = encodeURIComponent(
+      `Side Cover Waitlist - ${isCustom ? "Custom" : "Plain"}`,
+    );
 
     let orderDetails = "";
     if (isCustom) {
@@ -167,20 +169,20 @@ export default function SideCoverCustomizer() {
       if (selectedSide === "right" || selectedSide === "both") {
         orderDetails += `Right Side Text: "${rightText || "(no text)"}"\n`;
       }
-      orderDetails += `Font: ${FONTS.find(f => f.value === selectedFont)?.label ?? "Arial"}\n`;
-      orderDetails += `Size: ${SIZE_OPTIONS.find(s => s.value === fontSize)?.label ?? "Medium"}\n`;
+      orderDetails += `Font: ${FONTS.find((f) => f.value === selectedFont)?.label ?? "Arial"}\n`;
+      orderDetails += `Size: ${SIZE_OPTIONS.find((s) => s.value === fontSize)?.label ?? "Medium"}\n`;
     } else {
       orderDetails = "Plain (no custom text)\n";
     }
 
     const body = encodeURIComponent(
       `Name: ${formData.name}\n` +
-      `Email: ${formData.email}\n\n` +
-      `Order: ${selectedSide === "both" ? "Both Sides" : `${selectedSide.charAt(0).toUpperCase() + selectedSide.slice(1)} Side Only`}\n` +
-      `Type: ${isCustom ? "Custom Text" : "Plain"}\n` +
-      orderDetails +
-      `Price: ${getPrice()}\n\n` +
-      `Additional Notes:\n${formData.message}`
+        `Email: ${formData.email}\n\n` +
+        `Order: ${selectedSide === "both" ? "Both Sides" : `${selectedSide.charAt(0).toUpperCase() + selectedSide.slice(1)} Side Only`}\n` +
+        `Type: ${isCustom ? "Custom Text" : "Plain"}\n` +
+        orderDetails +
+        `Price: ${getPrice()}\n\n` +
+        `Additional Notes:\n${formData.message}`,
     );
 
     window.location.href = `mailto:pedalcodearmy@gmail.com?subject=${subject}&body=${body}`;
@@ -214,21 +216,25 @@ export default function SideCoverCustomizer() {
         <p className="mx-auto mb-2 max-w-md text-sm font-bold uppercase tracking-wide text-gray-600">
           3D Printed • Plain or Custom Text
         </p>
-        <div className="mt-4 mb-2">
+        <div className="mb-2 mt-4">
           <RetroBadge color="orange">Coming Soon</RetroBadge>
         </div>
         {/* Pricing Box */}
         <div className="mx-auto mt-4 max-w-xs rounded-none border-4 border-black bg-white p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-          <div className="flex justify-between border-b-2 border-dashed border-gray-300 pb-2 mb-2">
+          <div className="mb-2 flex justify-between border-b-2 border-dashed border-gray-300 pb-2">
             <span className="font-bold text-black">Plain (no text)</span>
-            <span className="font-black text-black">$45</span>
+            <span className="font-black text-black">$50</span>
           </div>
           <div className="flex justify-between">
             <span className="font-bold text-black">Custom Text</span>
-            <span className="font-black text-black">$50</span>
+            <span className="font-black text-black">$60</span>
           </div>
-          <p className="mt-2 text-center text-xs text-gray-500">per cover • + shipping</p>
-          <p className="text-center text-xs font-bold text-orange-600">Free shipping on orders over $99</p>
+          <p className="mt-2 text-center text-xs text-gray-500">
+            per cover • + shipping
+          </p>
+          <p className="text-center text-xs font-bold text-orange-600">
+            Free shipping on orders over $99
+          </p>
         </div>
       </div>
 
@@ -295,7 +301,8 @@ export default function SideCoverCustomizer() {
               )}
               {!hasCustomText() && (
                 <p className="mt-3 text-center text-sm text-gray-500">
-                  Add custom text below, or order plain for $45/cover
+                  Add custom text below, or order plain for $50/cover • +
+                  shipping
                 </p>
               )}
             </CardContent>
@@ -489,25 +496,31 @@ export default function SideCoverCustomizer() {
                     Your Order:
                   </p>
                   <p className="text-sm font-bold text-black">
-                    {selectedSide === "both" ? "Both Sides" : `${selectedSide.charAt(0).toUpperCase() + selectedSide.slice(1)} Side Only`}
+                    {selectedSide === "both"
+                      ? "Both Sides"
+                      : `${selectedSide.charAt(0).toUpperCase() + selectedSide.slice(1)} Side Only`}
                     {" • "}
                     {hasCustomText() ? "Custom" : "Plain"}
                   </p>
                   {hasCustomText() && (
                     <>
-                      {(selectedSide === "left" || selectedSide === "both") && leftText && (
-                        <p className="text-xs text-gray-600">
-                          Left: &quot;{leftText}&quot;
-                        </p>
-                      )}
-                      {(selectedSide === "right" || selectedSide === "both") && rightText && (
-                        <p className="text-xs text-gray-600">
-                          Right: &quot;{rightText}&quot;
-                        </p>
-                      )}
+                      {(selectedSide === "left" || selectedSide === "both") &&
+                        leftText && (
+                          <p className="text-xs text-gray-600">
+                            Left: &quot;{leftText}&quot;
+                          </p>
+                        )}
+                      {(selectedSide === "right" || selectedSide === "both") &&
+                        rightText && (
+                          <p className="text-xs text-gray-600">
+                            Right: &quot;{rightText}&quot;
+                          </p>
+                        )}
                       <p className="mt-1 text-xs text-gray-600">
-                        Font: {FONTS.find((f) => f.value === selectedFont)?.label} |
-                        Size: {SIZE_OPTIONS.find((s) => s.value === fontSize)?.label}
+                        Font:{" "}
+                        {FONTS.find((f) => f.value === selectedFont)?.label} |
+                        Size:{" "}
+                        {SIZE_OPTIONS.find((s) => s.value === fontSize)?.label}
                       </p>
                     </>
                   )}
