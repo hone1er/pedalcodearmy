@@ -7,11 +7,13 @@ let dbInitialized = false;
 async function ensureDbInitialized() {
   if (!dbInitialized) {
     try {
+      console.log("Initializing database...");
       await initializeDatabase();
       dbInitialized = true;
+      console.log("Database initialized successfully");
     } catch (error) {
       console.error("Failed to initialize database:", error);
-      throw error;
+      throw new Error(`Database initialization failed: ${error instanceof Error ? error.message : "Unknown error"}`);
     }
   }
 }
@@ -82,8 +84,9 @@ export async function POST(request: Request) {
     );
   } catch (error) {
     console.error("Error creating order:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json(
-      { error: "Failed to submit order. Please try again." },
+      { error: `Failed to submit order: ${errorMessage}` },
       { status: 500 }
     );
   }
