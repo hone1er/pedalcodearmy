@@ -103,7 +103,6 @@ function SideCoverPreview({
                 0px 0px 2px rgba(0,0,0,0.2)
               `,
               letterSpacing: "0.05em",
-              textTransform: "uppercase",
             }}
           >
             {text}
@@ -152,10 +151,6 @@ export default function SideCoverCustomizer() {
   const getPrice = () => {
     const basePrice = hasCustomText() ? 50 : 45;
     return selectedSide === "both" ? `$${basePrice * 2}` : `$${basePrice}`;
-  };
-
-  const getPriceLabel = () => {
-    return selectedSide === "both" ? "Pair" : "Per Cover";
   };
 
   const handleFormSubmit = (e: React.FormEvent) => {
