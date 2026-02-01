@@ -5,10 +5,26 @@ import Link from "next/link";
 import Image from "next/image";
 
 export const metadata: Metadata = {
-  title: "Pedal Code Army",
+  title: {
+    default: "Pedal Code Army",
+    template: "%s | Pedal Code Army",
+  },
   description:
     "A website for the Pedal Code Army moped gang. An East Bay moped gang that rides together, skates together, and wrenches together. Come join the madness!",
   icons: [{ rel: "icon", url: "/favicon.ico" }],
+  metadataBase: new URL("https://pedalcodearmy.com"),
+  openGraph: {
+    type: "website",
+    locale: "en_US",
+    siteName: "Pedal Code Army",
+  },
+  twitter: {
+    card: "summary_large_image",
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
 };
 
 export default function RootLayout({
