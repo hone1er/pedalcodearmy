@@ -9,17 +9,76 @@ import { Printer, Star, ArrowLeft, Send, Type } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 
-const FONTS = [
-  { value: "Arial, sans-serif", label: "Arial" },
-  { value: "Georgia, serif", label: "Georgia" },
-  { value: "'Courier New', monospace", label: "Courier New" },
-  { value: "Impact, sans-serif", label: "Impact" },
+const FONT_CATEGORIES = [
+  {
+    label: "Bold & Blocky",
+    fonts: [
+      { value: "'Bebas Neue', sans-serif", label: "Bebas Neue" },
+      { value: "Impact, sans-serif", label: "Impact" },
+      { value: "'Anton', sans-serif", label: "Anton" },
+      { value: "'Black Ops One', sans-serif", label: "Black Ops One" },
+    ],
+  },
+  {
+    label: "Racing & Sport",
+    fonts: [
+      { value: "'Racing Sans One', sans-serif", label: "Racing Sans One" },
+      { value: "'Russo One', sans-serif", label: "Russo One" },
+      { value: "'Teko', sans-serif", label: "Teko" },
+      { value: "'Orbitron', sans-serif", label: "Orbitron" },
+    ],
+  },
+  {
+    label: "Classic Sans",
+    fonts: [
+      { value: "Arial, sans-serif", label: "Arial" },
+      { value: "'Oswald', sans-serif", label: "Oswald" },
+      { value: "'Montserrat', sans-serif", label: "Montserrat" },
+      { value: "'Roboto Condensed', sans-serif", label: "Roboto Condensed" },
+    ],
+  },
+  {
+    label: "Serif & Slab",
+    fonts: [
+      { value: "Georgia, serif", label: "Georgia" },
+      { value: "'Alfa Slab One', serif", label: "Alfa Slab One" },
+      { value: "'Righteous', sans-serif", label: "Righteous" },
+      { value: "'Bungee', sans-serif", label: "Bungee" },
+    ],
+  },
+  {
+    label: "Handwritten & Fun",
+    fonts: [
+      { value: "'Permanent Marker', cursive", label: "Permanent Marker" },
+      { value: "'Bangers', cursive", label: "Bangers" },
+      { value: "'Lobster', cursive", label: "Lobster" },
+      { value: "'Pacifico', cursive", label: "Pacifico" },
+    ],
+  },
 ];
 
+// Flat list for backwards compatibility and lookups
+const FONTS = FONT_CATEGORIES.flatMap((category) => category.fonts);
+
 const SIZE_OPTIONS = [
-  { value: 24, label: "Small" },
-  { value: 32, label: "Medium" },
-  { value: 40, label: "Large" },
+  { value: 20, label: "XS" },
+  { value: 26, label: "S" },
+  { value: 32, label: "M" },
+  { value: 40, label: "L" },
+  { value: 48, label: "XL" },
+];
+
+const LETTER_SPACING_OPTIONS = [
+  { value: "0", label: "Tight" },
+  { value: "0.05em", label: "Normal" },
+  { value: "0.15em", label: "Wide" },
+  { value: "0.25em", label: "Extra Wide" },
+];
+
+const TEXT_CASE_OPTIONS = [
+  { value: "none", label: "As Typed" },
+  { value: "uppercase", label: "UPPERCASE" },
+  { value: "lowercase", label: "lowercase" },
 ];
 
 type SideOption = "left" | "right" | "both";
@@ -62,13 +121,24 @@ function SideCoverPreview({
   text,
   font,
   fontSize,
+  letterSpacing,
+  textCase,
 }: {
   side: "left" | "right";
   text: string;
   font: string;
   fontSize: number;
+  letterSpacing: string;
+  textCase: string;
 }) {
   const isLeft = side === "left";
+
+  const displayText =
+    textCase === "uppercase"
+      ? text.toUpperCase()
+      : textCase === "lowercase"
+        ? text.toLowerCase()
+        : text;
 
   return (
     <div className="relative aspect-square w-full overflow-hidden rounded-none border-2 border-gray-300 bg-gray-100">
@@ -102,10 +172,10 @@ function SideCoverPreview({
                 -1px -1px 1px rgba(0,0,0,0.35),
                 0px 0px 2px rgba(0,0,0,0.2)
               `,
-              letterSpacing: "0.05em",
+              letterSpacing: letterSpacing,
             }}
           >
-            {text}
+            {displayText}
           </span>
         </div>
       )}
@@ -123,8 +193,10 @@ export default function SideCoverCustomizer() {
   const [selectedSide, setSelectedSide] = useState<SideOption>("right");
   const [leftText, setLeftText] = useState("");
   const [rightText, setRightText] = useState("");
-  const [selectedFont, setSelectedFont] = useState("Arial, sans-serif");
+  const [selectedFont, setSelectedFont] = useState("'Bebas Neue', sans-serif");
   const [fontSize, setFontSize] = useState(32);
+  const [letterSpacing, setLetterSpacing] = useState("0.05em");
+  const [textCase, setTextCase] = useState("uppercase");
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -177,8 +249,10 @@ export default function SideCoverCustomizer() {
           sideOption: selectedSide,
           leftText: leftText || null,
           rightText: rightText || null,
-          font: FONTS.find((f) => f.value === selectedFont)?.label ?? "Arial",
-          textSize: SIZE_OPTIONS.find((s) => s.value === fontSize)?.label ?? "Medium",
+          font: FONTS.find((f) => f.value === selectedFont)?.label ?? "Bebas Neue",
+          textSize: SIZE_OPTIONS.find((s) => s.value === fontSize)?.label ?? "M",
+          letterSpacing: LETTER_SPACING_OPTIONS.find((s) => s.value === letterSpacing)?.label ?? "Normal",
+          textCase: TEXT_CASE_OPTIONS.find((c) => c.value === textCase)?.label ?? "UPPERCASE",
           isCustom,
           estimatedPrice: getPrice(),
           notes: formData.message || null,
@@ -295,12 +369,16 @@ export default function SideCoverCustomizer() {
                     text={leftText}
                     font={selectedFont}
                     fontSize={fontSize * 0.7}
+                    letterSpacing={letterSpacing}
+                    textCase={textCase}
                   />
                   <SideCoverPreview
                     side="right"
                     text={rightText}
                     font={selectedFont}
                     fontSize={fontSize * 0.7}
+                    letterSpacing={letterSpacing}
+                    textCase={textCase}
                   />
                 </div>
               ) : (
@@ -309,6 +387,8 @@ export default function SideCoverCustomizer() {
                   text={selectedSide === "left" ? leftText : rightText}
                   font={selectedFont}
                   fontSize={fontSize}
+                  letterSpacing={letterSpacing}
+                  textCase={textCase}
                 />
               )}
               {!hasCustomText() && (
@@ -379,13 +459,29 @@ export default function SideCoverCustomizer() {
                   value={selectedFont}
                   onChange={(e) => setSelectedFont(e.target.value)}
                   className="w-full rounded-none border-2 border-black bg-white px-3 py-2 text-black focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  style={{ fontFamily: selectedFont }}
                 >
-                  {FONTS.map((font) => (
-                    <option key={font.value} value={font.value}>
-                      {font.label}
-                    </option>
+                  {FONT_CATEGORIES.map((category) => (
+                    <optgroup key={category.label} label={category.label}>
+                      {category.fonts.map((font) => (
+                        <option
+                          key={font.value}
+                          value={font.value}
+                          style={{ fontFamily: font.value }}
+                        >
+                          {font.label}
+                        </option>
+                      ))}
+                    </optgroup>
                   ))}
                 </select>
+                {/* Font Preview */}
+                <div
+                  className="mt-2 rounded-none border border-gray-300 bg-gray-50 px-3 py-2 text-center text-lg"
+                  style={{ fontFamily: selectedFont }}
+                >
+                  {FONTS.find((f) => f.value === selectedFont)?.label ?? "Preview"}
+                </div>
               </div>
 
               {/* Size Selection */}
@@ -393,18 +489,62 @@ export default function SideCoverCustomizer() {
                 <label className="mb-2 block text-sm font-black uppercase text-black">
                   Text Size
                 </label>
-                <div className="flex gap-2">
+                <div className="flex gap-1">
                   {SIZE_OPTIONS.map((size) => (
                     <button
                       key={size.value}
                       onClick={() => setFontSize(size.value)}
-                      className={`flex-1 rounded-none border-2 border-black px-4 py-2 text-sm font-bold uppercase transition-all ${
+                      className={`flex-1 rounded-none border-2 border-black px-2 py-2 text-sm font-bold uppercase transition-all ${
                         fontSize === size.value
                           ? "bg-black text-[#FFD700]"
                           : "bg-white text-black hover:bg-gray-100"
                       }`}
                     >
                       {size.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Letter Spacing */}
+              <div>
+                <label className="mb-2 block text-sm font-black uppercase text-black">
+                  Letter Spacing
+                </label>
+                <div className="flex gap-1">
+                  {LETTER_SPACING_OPTIONS.map((spacing) => (
+                    <button
+                      key={spacing.value}
+                      onClick={() => setLetterSpacing(spacing.value)}
+                      className={`flex-1 rounded-none border-2 border-black px-2 py-2 text-xs font-bold uppercase transition-all ${
+                        letterSpacing === spacing.value
+                          ? "bg-black text-[#FFD700]"
+                          : "bg-white text-black hover:bg-gray-100"
+                      }`}
+                    >
+                      {spacing.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Text Case */}
+              <div>
+                <label className="mb-2 block text-sm font-black uppercase text-black">
+                  Text Case
+                </label>
+                <div className="flex gap-2">
+                  {TEXT_CASE_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      onClick={() => setTextCase(option.value)}
+                      className={`flex-1 rounded-none border-2 border-black px-3 py-2 text-xs font-bold transition-all ${
+                        textCase === option.value
+                          ? "bg-black text-[#FFD700]"
+                          : "bg-white text-black hover:bg-gray-100"
+                      }`}
+                    >
+                      {option.label}
                     </button>
                   ))}
                 </div>
@@ -532,7 +672,11 @@ export default function SideCoverCustomizer() {
                         Font:{" "}
                         {FONTS.find((f) => f.value === selectedFont)?.label} |
                         Size:{" "}
-                        {SIZE_OPTIONS.find((s) => s.value === fontSize)?.label}
+                        {SIZE_OPTIONS.find((s) => s.value === fontSize)?.label} |
+                        Spacing:{" "}
+                        {LETTER_SPACING_OPTIONS.find((s) => s.value === letterSpacing)?.label} |
+                        Case:{" "}
+                        {TEXT_CASE_OPTIONS.find((c) => c.value === textCase)?.label}
                       </p>
                     </>
                   )}
