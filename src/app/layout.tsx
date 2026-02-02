@@ -34,7 +34,11 @@ export default function RootLayout({
     <html lang="en" className={`${GeistSans.variable}`}>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          rel="preconnect"
+          href="https://fonts.gstatic.com"
+          crossOrigin="anonymous"
+        />
         <link
           href="https://fonts.googleapis.com/css2?family=Alfa+Slab+One&family=Anton&family=Bangers&family=Bebas+Neue&family=Black+Ops+One&family=Bungee&family=Lobster&family=Montserrat:wght@700&family=Orbitron:wght@700&family=Oswald:wght@700&family=Pacifico&family=Permanent+Marker&family=Racing+Sans+One&family=Righteous&family=Roboto+Condensed:wght@700&family=Russo+One&family=Teko:wght@600&display=swap"
           rel="stylesheet"
@@ -42,7 +46,7 @@ export default function RootLayout({
       </head>
       <body>
         <div className="min-h-screen scroll-smooth bg-[#FFD700] font-sans">
-          <header className="sticky top-0 z-50 bg-black py-4 text-[#FFD700]">
+          <header className="sticky top-0 z-30 bg-black py-4 text-[#FFD700]">
             <div className="container mx-auto flex items-center justify-between px-4">
               <Link href={"/"} className="flex items-center space-x-2">
                 <Image

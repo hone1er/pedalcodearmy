@@ -19,7 +19,7 @@ export function CartButton() {
   return (
     <button
       onClick={() => setIsOpen(true)}
-      className="fixed right-4 top-4 z-40 flex items-center gap-2 rounded-none border-2 border-black bg-[#FFD700] px-4 py-2 font-black uppercase text-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all hover:bg-yellow-400 hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]"
+      className="fixed right-4 top-20 z-40 flex items-center gap-2 rounded-none border-2 border-black bg-[#FFD700] px-4 py-2 font-black uppercase text-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all hover:bg-yellow-400 hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]"
     >
       <ShoppingCart className="h-5 w-5" />
       <span>Cart ({itemCount})</span>
@@ -28,13 +28,20 @@ export function CartButton() {
 }
 
 export function CartDrawer() {
-  const { items, isOpen, setIsOpen, removeItem, updateQuantity, clearCart } = useCart();
+  const { items, isOpen, setIsOpen, removeItem, updateQuantity, clearCart } =
+    useCart();
 
   if (!isOpen) return null;
 
-  const checkoutUrl = items.length > 0
-    ? createCheckoutUrl(items.map((item) => ({ variantId: item.variantId, quantity: item.quantity })))
-    : "#";
+  const checkoutUrl =
+    items.length > 0
+      ? createCheckoutUrl(
+          items.map((item) => ({
+            variantId: item.variantId,
+            quantity: item.quantity,
+          })),
+        )
+      : "#";
 
   const subtotal = items.reduce((sum, item) => {
     return sum + parsePrice(item.price) * item.quantity;
@@ -81,8 +88,12 @@ export function CartDrawer() {
                   >
                     <div className="mb-3 flex items-start justify-between">
                       <div>
-                        <h3 className="font-black uppercase text-black">{item.name}</h3>
-                        <p className="text-sm font-bold text-gray-600">{item.price} each</p>
+                        <h3 className="font-black uppercase text-black">
+                          {item.name}
+                        </h3>
+                        <p className="text-sm font-bold text-gray-600">
+                          {item.price} each
+                        </p>
                       </div>
                       <button
                         onClick={() => removeItem(item.variantId)}
@@ -96,7 +107,9 @@ export function CartDrawer() {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1">
                         <button
-                          onClick={() => updateQuantity(item.variantId, item.quantity - 1)}
+                          onClick={() =>
+                            updateQuantity(item.variantId, item.quantity - 1)
+                          }
                           className="rounded-none border-2 border-black bg-black p-2 text-white hover:bg-gray-800"
                           aria-label="Decrease quantity"
                         >
@@ -106,7 +119,9 @@ export function CartDrawer() {
                           {item.quantity}
                         </span>
                         <button
-                          onClick={() => updateQuantity(item.variantId, item.quantity + 1)}
+                          onClick={() =>
+                            updateQuantity(item.variantId, item.quantity + 1)
+                          }
                           className="rounded-none border-2 border-black bg-black p-2 text-white hover:bg-gray-800"
                           aria-label="Increase quantity"
                         >
@@ -114,7 +129,9 @@ export function CartDrawer() {
                         </button>
                       </div>
                       <div className="text-right">
-                        <p className="text-lg font-black text-black">{formatPrice(itemTotal)}</p>
+                        <p className="text-lg font-black text-black">
+                          {formatPrice(itemTotal)}
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -128,8 +145,12 @@ export function CartDrawer() {
         {items.length > 0 && (
           <div className="border-t-4 border-black bg-white p-4">
             <div className="mb-4 flex items-center justify-between border-b-2 border-dashed border-gray-400 pb-4">
-              <span className="text-lg font-black uppercase text-black">Subtotal</span>
-              <span className="text-2xl font-black text-black">{formatPrice(subtotal)}</span>
+              <span className="text-lg font-black uppercase text-black">
+                Subtotal
+              </span>
+              <span className="text-2xl font-black text-black">
+                {formatPrice(subtotal)}
+              </span>
             </div>
             <a
               href={checkoutUrl}
