@@ -20,6 +20,9 @@ import {
   Star,
   Check,
 } from "lucide-react";
+import { ShopifyBuyButton } from "@/components/shopify-buy-button";
+import { CartProvider } from "@/components/cart-context";
+import { CartButton, CartDrawer } from "@/components/cart";
 import Link from "next/link";
 import Image from "next/image";
 
@@ -311,7 +314,8 @@ const PRINTED_PARTS = [
       "2x M10x1.25x60mm bolts",
       "2x Concave spring washers",
     ],
-    availability: "Feb 1",
+    availability: "In Stock",
+    shopifyEnabled: true,
   },
   {
     id: "chain-tensioner",
@@ -326,7 +330,8 @@ const PRINTED_PARTS = [
       "1x M5x25mm bolt",
       "2x M5 washers",
     ],
-    availability: "Mid February",
+    availability: "In Stock",
+    shopifyEnabled: true,
   },
   {
     id: "ram-airbox",
@@ -353,8 +358,11 @@ const MOPEDS_FOR_SALE = [
 
 export default function Shop() {
   return (
-    <div className="container mx-auto px-4 py-12">
-      {/* Hero Section */}
+    <CartProvider>
+      <CartButton />
+      <CartDrawer />
+      <div className="container mx-auto px-4 py-12">
+        {/* Hero Section */}
       <div className="mb-8 text-center">
         <div className="mb-4 flex items-center justify-center gap-3">
           <Star className="h-8 w-8 text-orange-500" />
@@ -501,6 +509,18 @@ export default function Shop() {
                         Preview your custom text before ordering
                       </p>
                     </>
+                  ) : part.shopifyEnabled ? (
+                    <>
+                      <ShopifyBuyButton
+                        productId={part.id}
+                        productName={part.name}
+                        price={part.price}
+                        image={part.image ?? undefined}
+                      />
+                      <p className="mt-2 text-center text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                        Secure checkout via Shopify
+                      </p>
+                    </>
                   ) : (
                     <>
                       <WaitlistButton productName={part.name} productPrice={part.price} />
@@ -608,6 +628,7 @@ export default function Shop() {
           </p>
         </div>
       </section>
-    </div>
+      </div>
+    </CartProvider>
   );
 }
