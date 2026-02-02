@@ -36,7 +36,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
     const stored = localStorage.getItem(CART_STORAGE_KEY);
     if (stored) {
       try {
-        setItems(JSON.parse(stored));
+        const parsed: unknown = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          setItems(parsed as CartItem[]);
+        }
       } catch {
         // Invalid JSON, ignore
       }

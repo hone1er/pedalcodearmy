@@ -5,7 +5,7 @@ import { useCart } from "./cart-context";
 import { createCheckoutUrl } from "@/lib/shopify";
 
 function parsePrice(price: string): number {
-  const match = price.match(/\$?([\d.]+)/);
+  const match = /\$?([\d.]+)/.exec(price);
   return match?.[1] ? parseFloat(match[1]) : 0;
 }
 
