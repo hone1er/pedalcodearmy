@@ -608,7 +608,7 @@ export default function Shop() {
           <h3 className="mb-2 text-2xl font-black uppercase text-[#FFD700]">
             Questions?
           </h3>
-          <p className="text-sm font-bold text-white">
+          <p className="mb-3 text-sm font-bold text-white">
             Slide into our{" "}
             <Link
               href="https://instagram.com/pedalcodearmy"
@@ -625,6 +625,15 @@ export default function Shop() {
             >
               shoot us an email
             </Link>
+          </p>
+          <p className="text-sm font-bold text-white">
+            Or call us:{" "}
+            <a
+              href="tel:+15103897975"
+              className="text-orange-400 underline hover:text-orange-300"
+            >
+              (510) 389-7975
+            </a>
           </p>
         </div>
       </section>
