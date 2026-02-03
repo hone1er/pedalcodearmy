@@ -9,6 +9,8 @@ import {
   Youtube,
   Instagram,
   ChevronDown,
+  Bike,
+  ChevronRight,
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -82,6 +84,54 @@ export default function PedalCodeArmyLanding() {
                 occasionally getting lost in Oakland.
               </p>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Community Features Section */}
+      <section className="bg-black py-20 text-[#FFD700]">
+        <div className="container mx-auto px-4">
+          <h2 className="mb-4 text-center text-4xl font-bold">
+            Community Tools
+          </h2>
+          <p className="mx-auto mb-12 max-w-2xl text-center text-white/70">
+            Resources built by moped nerds, for moped nerds. Browse builds,
+            troubleshoot problems, and plan your next project.
+          </p>
+          <div className="mx-auto grid max-w-4xl gap-8 md:grid-cols-2">
+            {/* The Stable */}
+            <Link href="/stable" className="group">
+              <div className="h-full transform rounded-none border-4 border-[#FFD700] bg-black p-6 shadow-[4px_4px_0px_0px_rgba(255,215,0,0.3)] transition-all duration-300 hover:shadow-[6px_6px_0px_0px_rgba(255,215,0,0.5)]">
+                <Bike className="mb-4 h-12 w-12 text-[#FFD700]" />
+                <h3 className="mb-2 text-2xl font-black uppercase tracking-tight">
+                  The Stable
+                </h3>
+                <p className="mb-4 text-white/70">
+                  Browse 27+ mopeds from our fleet. Filter by make, compare
+                  builds, and get inspired for your next project.
+                </p>
+                <span className="flex items-center font-bold text-orange-500 group-hover:text-orange-400">
+                  Explore Fleet <ChevronRight className="ml-1 h-4 w-4" />
+                </span>
+              </div>
+            </Link>
+
+            {/* Wrench Roulette */}
+            <Link href="/wrench-roulette" className="group">
+              <div className="h-full transform rounded-none border-4 border-[#FFD700] bg-black p-6 shadow-[4px_4px_0px_0px_rgba(255,215,0,0.3)] transition-all duration-300 hover:shadow-[6px_6px_0px_0px_rgba(255,215,0,0.5)]">
+                <Wrench className="mb-4 h-12 w-12 text-[#FFD700]" />
+                <h3 className="mb-2 text-2xl font-black uppercase tracking-tight">
+                  Wrench Roulette
+                </h3>
+                <p className="mb-4 text-white/70">
+                  Moped acting up? Click through our troubleshooting flowchart
+                  to diagnose common problems and get fix suggestions.
+                </p>
+                <span className="flex items-center font-bold text-orange-500 group-hover:text-orange-400">
+                  Diagnose Now <ChevronRight className="ml-1 h-4 w-4" />
+                </span>
+              </div>
+            </Link>
           </div>
         </div>
       </section>

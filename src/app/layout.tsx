@@ -74,14 +74,6 @@ export default function RootLayout({
                     </Link>
                   </li>
                   <li>
-                    <Link
-                      href="/build-calculator"
-                      className="hidden hover:underline lg:block"
-                    >
-                      Build Calculator
-                    </Link>
-                  </li>
-                  <li>
                     <Link href="/shop" className="hover:underline">
                       Shop
                     </Link>
