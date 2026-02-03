@@ -61,27 +61,24 @@ export default function RootLayout({
               <nav className="block">
                 <ul className="flex space-x-6">
                   <li>
-                    <Link
-                      href="/#about"
-                      className="hidden hover:underline md:block"
-                    >
-                      About Our Madness
+                    <Link href="/stable" className="hover:underline">
+                      The Stable
                     </Link>
                   </li>
                   <li>
                     <Link
-                      href="/#rides"
+                      href="/wrench-roulette"
                       className="hidden hover:underline md:block"
                     >
-                      Wobbly Rides
+                      Wrench Roulette
                     </Link>
                   </li>
                   <li>
                     <Link
-                      href="/#join"
-                      className="hidden hover:underline md:block"
+                      href="/build-calculator"
+                      className="hidden hover:underline lg:block"
                     >
-                      Hit us up!
+                      Build Calculator
                     </Link>
                   </li>
                   <li>
@@ -90,7 +87,10 @@ export default function RootLayout({
                     </Link>
                   </li>
                   <li>
-                    <Link href="/members" className="hover:underline">
+                    <Link
+                      href="/members"
+                      className="hidden hover:underline md:block"
+                    >
                       The Dudes
                     </Link>
                   </li>
@@ -132,7 +132,17 @@ export default function RootLayout({
               Proudly puttering around the streets of East Bay since...
               recently.
             </p>
-            <p>Founded by Kyle and Joe. Blame them for this madness.</p>
+            <p className="mb-6">Founded by Kyle and Joe. Blame them for this madness.</p>
+
+            <div className="mx-auto max-w-2xl border-t border-yellow-700 pt-6 text-xs text-yellow-600">
+              <p className="mb-2 font-bold uppercase tracking-wide">Legal Disclaimer</p>
+              <p>
+                All products sold by Pedal Code Army, including 3D printed parts, are provided &quot;as is&quot; without warranty of any kind.
+                Use at your own risk. Not responsible for injury, death, property damage, or mechanical failure.
+                Parts are not safety tested or certified. For off-road and novelty use only.
+                Professional installation recommended. By purchasing, you assume all risks and liabilities.
+              </p>
+            </div>
           </div>
         </footer>
       </body>

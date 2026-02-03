@@ -628,6 +628,38 @@ export default function Shop() {
           </p>
         </div>
       </section>
+
+      {/* Legal Disclaimer */}
+      <section className="mt-16">
+        <div className="rounded-none border-4 border-red-800 bg-red-50 p-6">
+          <h3 className="mb-4 text-center text-lg font-black uppercase text-red-800">
+            Important Safety Disclaimer
+          </h3>
+          <div className="space-y-3 text-sm text-red-900">
+            <p>
+              <strong>USE AT YOUR OWN RISK:</strong> All 3D printed parts sold by Pedal Code Army are provided &quot;as is&quot; without any warranty, express or implied. These parts are not safety tested, certified, or approved by any regulatory agency.
+            </p>
+            <p>
+              <strong>ASSUMPTION OF RISK:</strong> By purchasing and installing these parts, you acknowledge and accept full responsibility for any and all risks associated with their use, including but not limited to personal injury, death, property damage, or mechanical failure.
+            </p>
+            <p>
+              <strong>NOT FOR STREET USE:</strong> These parts are intended for off-road, display, or novelty purposes only. Use on public roads is at your own risk and may not comply with local vehicle safety regulations.
+            </p>
+            <p>
+              <strong>PROFESSIONAL INSTALLATION RECOMMENDED:</strong> We strongly recommend having all parts inspected and installed by a qualified mechanic. Improper installation may result in part failure, accidents, or injury.
+            </p>
+            <p>
+              <strong>NO LIABILITY:</strong> Pedal Code Army, its owners, employees, and affiliates shall not be held liable for any damages, injuries, or losses resulting from the use, misuse, or failure of any products sold. This includes direct, indirect, incidental, punitive, and consequential damages.
+            </p>
+            <p>
+              <strong>WARRANTY DISCLAIMER:</strong> Installing aftermarket parts may void your vehicle&apos;s manufacturer warranty. Pedal Code Army is not responsible for any warranty claims denied as a result of using our products.
+            </p>
+            <p className="pt-2 text-center text-xs font-bold uppercase tracking-wide text-red-700">
+              By completing a purchase, you agree to these terms and conditions.
+            </p>
+          </div>
+        </div>
+      </section>
       </div>
     </CartProvider>
   );
