@@ -21,7 +21,6 @@ import {
   Check,
 } from "lucide-react";
 import { ShopifyBuyButton } from "@/components/shopify-buy-button";
-import { CartProvider } from "@/components/cart-context";
 import { CartButton, CartDrawer } from "@/components/cart";
 import Link from "next/link";
 import Image from "next/image";
@@ -373,7 +372,7 @@ const MOPEDS_FOR_SALE = [
 
 export default function Shop() {
   return (
-    <CartProvider>
+    <>
       <CartButton />
       <CartDrawer />
       <div className="container mx-auto px-4 py-12">
@@ -713,6 +712,6 @@ export default function Shop() {
           </div>
         </section>
       </div>
-    </CartProvider>
+    </>
   );
 }

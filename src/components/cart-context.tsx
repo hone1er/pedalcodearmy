@@ -25,32 +25,87 @@ interface CartContextType {
 const CartContext = createContext<CartContextType | null>(null);
 
 const CART_STORAGE_KEY = "pca-cart";
+const CART_COOKIE_KEY = "pca-cart";
+
+// Cookie utility functions
+function setCookie(name: string, value: string, days = 7) {
+  const expires = new Date();
+  expires.setTime(expires.getTime() + days * 24 * 60 * 60 * 1000);
+  document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires.toUTCString()}; path=/; SameSite=Lax`;
+}
+
+function getCookie(name: string): string | null {
+  const nameEQ = `${name}=`;
+  const ca = document.cookie.split(";");
+  for (const item of ca) {
+    const c = item.trimStart();
+    if (c.startsWith(nameEQ)) {
+      return decodeURIComponent(c.substring(nameEQ.length));
+    }
+  }
+  return null;
+}
+
+function deleteCookie(name: string) {
+  document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+}
 
 export function CartProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
 
-  // Load cart from localStorage on mount
+  // Load cart from localStorage and cookies on mount
   useEffect(() => {
-    const stored = localStorage.getItem(CART_STORAGE_KEY);
-    if (stored) {
+    let cartData: CartItem[] = [];
+
+    // Try localStorage first
+    const storedLocal = localStorage.getItem(CART_STORAGE_KEY);
+    if (storedLocal) {
       try {
-        const parsed: unknown = JSON.parse(stored);
+        const parsed: unknown = JSON.parse(storedLocal);
         if (Array.isArray(parsed)) {
-          setItems(parsed as CartItem[]);
+          cartData = parsed as CartItem[];
         }
       } catch {
-        // Invalid JSON, ignore
+        // Invalid JSON, try cookies
       }
     }
+
+    // If localStorage is empty, try cookies as fallback
+    if (cartData.length === 0) {
+      const storedCookie = getCookie(CART_COOKIE_KEY);
+      if (storedCookie) {
+        try {
+          const parsed: unknown = JSON.parse(storedCookie);
+          if (Array.isArray(parsed)) {
+            cartData = parsed as CartItem[];
+          }
+        } catch {
+          // Invalid JSON in cookie
+        }
+      }
+    }
+
+    setItems(cartData);
     setIsHydrated(true);
   }, []);
 
-  // Save cart to localStorage on change
+  // Save cart to both localStorage and cookies on change
   useEffect(() => {
     if (isHydrated) {
-      localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items));
+      const cartJson = JSON.stringify(items);
+
+      // Save to localStorage
+      localStorage.setItem(CART_STORAGE_KEY, cartJson);
+
+      // Save to cookie (for cross-session persistence)
+      // Only store if cart has items to avoid large empty cookies
+      if (items.length > 0) {
+        setCookie(CART_COOKIE_KEY, cartJson, 7); // 7 days expiry
+      } else {
+        deleteCookie(CART_COOKIE_KEY);
+      }
     }
   }, [items, isHydrated]);
 

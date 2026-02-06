@@ -3,6 +3,7 @@ import { GeistSans } from "geist/font/sans";
 import { type Metadata } from "next";
 import Link from "next/link";
 import Image from "next/image";
+import { Providers } from "@/components/providers";
 
 export const metadata: Metadata = {
   title: {
@@ -45,6 +46,7 @@ export default function RootLayout({
         />
       </head>
       <body>
+        <Providers>
         <div className="min-h-screen scroll-smooth bg-[#FFD700] font-sans">
           <header className="sticky top-0 z-30 bg-black py-4 text-[#FFD700]">
             <div className="container mx-auto flex items-center justify-between px-4">
@@ -143,6 +145,7 @@ export default function RootLayout({
             </div>
           </div>
         </footer>
+        </Providers>
       </body>
     </html>
   );
