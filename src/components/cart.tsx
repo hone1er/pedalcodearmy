@@ -154,7 +154,8 @@ export function CartDrawer() {
             </div>
             <a
               href={checkoutUrl}
-              onClick={() => clearCart()}
+              target="_blank"
+              rel="noopener noreferrer"
               className="mb-3 flex w-full items-center justify-center gap-2 rounded-none border-4 border-black bg-[#FFD700] py-4 font-black uppercase text-black transition-all hover:bg-yellow-400 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
             >
               Checkout on Shopify
