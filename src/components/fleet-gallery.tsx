@@ -120,7 +120,7 @@ function MopedDetailModal({
             src={moped.image}
             alt={moped.name}
             fill
-            className="object-contain bg-gray-100"
+            className="bg-gray-100 object-contain"
           />
           <button
             onClick={onClose}
@@ -311,7 +311,8 @@ function FilterSidebar({
       <div className="mt-4 border-t-2 border-black pt-4">
         <p className="text-center text-sm font-bold">
           Showing{" "}
-          <span className="text-[#FFD700] text-stroke">{mopedCount}</span> mopeds
+          <span className="text-stroke text-[#FFD700]">{mopedCount}</span>{" "}
+          mopeds
         </p>
       </div>
     </div>
@@ -330,7 +331,6 @@ function StatsBar() {
         { label: "Total Mopeds", value: totalMopeds, icon: Bike },
         { label: "Owners", value: totalOwners, icon: Users },
         { label: "Makes", value: totalMakes, icon: Filter },
-        { label: "With Specs", value: withSpecs, icon: Filter },
       ].map((stat) => (
         <div
           key={stat.label}
@@ -367,7 +367,7 @@ export default function FleetGallery() {
 
   const handleFilterChange = (
     key: keyof FilterState,
-    value: string | boolean
+    value: string | boolean,
   ) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
   };
@@ -409,9 +409,7 @@ export default function FleetGallery() {
             <div className="flex h-64 items-center justify-center rounded-none border-4 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
               <div className="text-center">
                 <p className="text-xl font-black uppercase">No mopeds found</p>
-                <p className="mt-2 text-gray-600">
-                  Try adjusting your filters
-                </p>
+                <p className="mt-2 text-gray-600">Try adjusting your filters</p>
                 <Button
                   onClick={handleResetFilters}
                   className="mt-4 rounded-none border-2 border-black bg-[#FFD700] font-bold text-black hover:bg-yellow-400"
