@@ -29,7 +29,7 @@ export function ShopifyBuyButton({ productId, productName, price, image }: Shopi
   }
 
   const handleAddToCart = () => {
-    addItem({
+    void addItem({
       variantId,
       productId,
       name: productName,
