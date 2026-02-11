@@ -1,5 +1,5 @@
 // Shopify configuration
-const SHOPIFY_DOMAIN = process.env.NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN ?? "pca-moped-parts.myshopify.com";
+const SHOPIFY_DOMAIN = process.env.NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN ?? process.env.NEXT_PUBLIC_SHOPIFY_DOMAIN ?? "pca-moped-parts.myshopify.com";
 const STOREFRONT_ACCESS_TOKEN = process.env.NEXT_PUBLIC_SHOPIFY_STOREFRONT_TOKEN ?? "";
 
 // Map product IDs to Shopify variant IDs (GraphQL global IDs)
@@ -20,7 +20,11 @@ export function getShopifyVariantId(productId: string): string | null {
 
 // Create a permalink checkout URL (fallback method)
 export function createCheckoutUrl(items: { variantId: string; quantity: number }[]): string {
-  const cartItems = items.map((item) => `${item.variantId}:${item.quantity}`).join(",");
+  const cartItems = items.map((item) => {
+    // Strip GraphQL prefix if present to get numeric variant ID
+    const numericId = item.variantId.replace("gid://shopify/ProductVariant/", "");
+    return `${numericId}:${item.quantity}`;
+  }).join(",");
   return `https://${SHOPIFY_DOMAIN}/cart/${cartItems}`;
 }
 
@@ -32,7 +36,7 @@ interface StorefrontResponse<T> {
 
 // Storefront API client
 async function storefrontFetch<T>(query: string, variables?: Record<string, unknown>): Promise<T> {
-  const response = await fetch(`https://${SHOPIFY_DOMAIN}/api/2024-01/graphql.json`, {
+  const response = await fetch(`https://${SHOPIFY_DOMAIN}/api/2025-01/graphql.json`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

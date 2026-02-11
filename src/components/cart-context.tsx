@@ -136,12 +136,15 @@ export function CartProvider({ children }: { children: ReactNode }) {
               localStorage.setItem(SHOPIFY_CART_ID_KEY, cart.id);
               setCookie(SHOPIFY_CART_ID_KEY, cart.id, 7);
             } else {
-              // Cart expired or invalid, clear it
+              // Cart expired or invalid, fall back to local mode
+              setUseShopify(false);
               localStorage.removeItem(SHOPIFY_CART_ID_KEY);
               deleteCookie(SHOPIFY_CART_ID_KEY);
             }
           } catch (error) {
             console.error("Failed to load Shopify cart:", error);
+            // API auth failed — fall back to local cart mode
+            setUseShopify(false);
             localStorage.removeItem(SHOPIFY_CART_ID_KEY);
             deleteCookie(SHOPIFY_CART_ID_KEY);
           }
@@ -212,6 +215,23 @@ export function CartProvider({ children }: { children: ReactNode }) {
     }
   }, [items, isHydrated, useShopify]);
 
+  const addItemLocal = useCallback(
+    (item: Omit<CartItem, "quantity" | "lineId">) => {
+      setItems((prev) => {
+        const existing = prev.find((i) => i.variantId === item.variantId);
+        if (existing) {
+          return prev.map((i) =>
+            i.variantId === item.variantId
+              ? { ...i, quantity: i.quantity + 1 }
+              : i
+          );
+        }
+        return [...prev, { ...item, quantity: 1 }];
+      });
+    },
+    []
+  );
+
   const addItem = useCallback(
     async (item: Omit<CartItem, "quantity" | "lineId">) => {
       setIsLoading(true);
@@ -239,39 +259,22 @@ export function CartProvider({ children }: { children: ReactNode }) {
             setCookie(SHOPIFY_CART_ID_KEY, cart.id, 7);
           }
         } else {
-          // Local cart
-          setItems((prev) => {
-            const existing = prev.find((i) => i.variantId === item.variantId);
-            if (existing) {
-              return prev.map((i) =>
-                i.variantId === item.variantId
-                  ? { ...i, quantity: i.quantity + 1 }
-                  : i
-              );
-            }
-            return [...prev, { ...item, quantity: 1 }];
-          });
+          addItemLocal(item);
         }
       } catch (error) {
         console.error("Failed to add item to cart:", error);
-        // Fallback to local cart on error
-        setItems((prev) => {
-          const existing = prev.find((i) => i.variantId === item.variantId);
-          if (existing) {
-            return prev.map((i) =>
-              i.variantId === item.variantId
-                ? { ...i, quantity: i.quantity + 1 }
-                : i
-            );
-          }
-          return [...prev, { ...item, quantity: 1 }];
-        });
+        // Shopify API failed — switch to local cart mode
+        setUseShopify(false);
+        setShopifyCartId(null);
+        localStorage.removeItem(SHOPIFY_CART_ID_KEY);
+        deleteCookie(SHOPIFY_CART_ID_KEY);
+        addItemLocal(item);
       } finally {
         setIsLoading(false);
         setIsOpen(true);
       }
     },
-    [useShopify, shopifyCartId]
+    [useShopify, shopifyCartId, addItemLocal]
   );
 
   const removeItem = useCallback(
@@ -291,6 +294,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         }
       } catch (error) {
         console.error("Failed to remove item from cart:", error);
+        setUseShopify(false);
         setItems((prev) => prev.filter((i) => i.variantId !== variantId));
       } finally {
         setIsLoading(false);
@@ -327,6 +331,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         }
       } catch (error) {
         console.error("Failed to update quantity:", error);
+        setUseShopify(false);
         setItems((prev) =>
           prev.map((i) =>
             i.variantId === variantId ? { ...i, quantity } : i
