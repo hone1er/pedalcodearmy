@@ -116,19 +116,19 @@ export default function PedalCodeArmyLanding() {
               </div>
             </Link>
 
-            {/* Wrench Roulette */}
-            <Link href="/wrench-roulette" className="group">
+            {/* East Bay Runner Game */}
+            <Link href="/game" className="group">
               <div className="h-full transform rounded-none border-4 border-[#FFD700] bg-black p-6 shadow-[4px_4px_0px_0px_rgba(255,215,0,0.3)] transition-all duration-300 hover:shadow-[6px_6px_0px_0px_rgba(255,215,0,0.5)]">
-                <Wrench className="mb-4 h-12 w-12 text-[#FFD700]" />
+                <Bike className="mb-4 h-12 w-12 text-[#FFD700]" />
                 <h3 className="mb-2 text-2xl font-black uppercase tracking-tight">
-                  Wrench Roulette
+                  East Bay Runner
                 </h3>
                 <p className="mb-4 text-white/70">
-                  Moped acting up? Click through our troubleshooting flowchart
-                  to diagnose common problems and get fix suggestions.
+                  Dodge traffic, hit wheelies, and rack up points riding your
+                  moped through the streets of the East Bay.
                 </p>
                 <span className="flex items-center font-bold text-orange-500 group-hover:text-orange-400">
-                  Diagnose Now <ChevronRight className="ml-1 h-4 w-4" />
+                  Play Now <ChevronRight className="ml-1 h-4 w-4" />
                 </span>
               </div>
             </Link>

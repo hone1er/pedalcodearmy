@@ -68,14 +68,6 @@ export default function RootLayout({
                     </Link>
                   </li>
                   <li>
-                    <Link
-                      href="/wrench-roulette"
-                      className="hidden hover:underline md:block"
-                    >
-                      Wrench Roulette
-                    </Link>
-                  </li>
-                  <li>
                     <Link href="/shop" className="hover:underline">
                       Shop
                     </Link>
@@ -86,6 +78,11 @@ export default function RootLayout({
                       className="hidden hover:underline md:block"
                     >
                       The Dudes
+                    </Link>
+                  </li>
+                  <li>
+                    <Link href="/game" className="hover:underline">
+                      City Runner
                     </Link>
                   </li>
                 </ul>
