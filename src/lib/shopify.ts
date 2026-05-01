@@ -1,6 +1,6 @@
 // Shopify configuration
-const SHOPIFY_DOMAIN = process.env.NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN ?? process.env.NEXT_PUBLIC_SHOPIFY_DOMAIN ?? "pca-moped-parts.myshopify.com";
-const STOREFRONT_ACCESS_TOKEN = process.env.NEXT_PUBLIC_SHOPIFY_STOREFRONT_TOKEN ?? "";
+const SHOPIFY_DOMAIN = (process.env.NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN ?? process.env.NEXT_PUBLIC_SHOPIFY_DOMAIN ?? "pca-moped-parts.myshopify.com").trim();
+const STOREFRONT_ACCESS_TOKEN = (process.env.NEXT_PUBLIC_SHOPIFY_STOREFRONT_TOKEN ?? "").trim();
 
 // Map product IDs to Shopify variant IDs (GraphQL global IDs)
 export const SHOPIFY_VARIANT_IDS: Record<string, string> = {
