@@ -6,12 +6,14 @@ const STOREFRONT_ACCESS_TOKEN = process.env.NEXT_PUBLIC_SHOPIFY_STOREFRONT_TOKEN
 export const SHOPIFY_VARIANT_IDS: Record<string, string> = {
   "fork-spacers": "gid://shopify/ProductVariant/42530734080098",
   "chain-tensioner": "gid://shopify/ProductVariant/42530733424738",
+  "headlight-bracket-pa50": "gid://shopify/ProductVariant/42629262442594",
 };
 
 // Legacy numeric IDs for permalink checkout
 export const SHOPIFY_NUMERIC_VARIANT_IDS: Record<string, string> = {
   "fork-spacers": "42530734080098",
   "chain-tensioner": "42530733424738",
+  "headlight-bracket-pa50": "42629262442594",
 };
 
 export function getShopifyVariantId(productId: string): string | null {

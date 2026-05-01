@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { ShopifyBuyButton } from "@/components/shopify-buy-button";
 import { CartButton, CartDrawer } from "@/components/cart";
+import { ProductImageCarousel } from "@/components/product-image-carousel";
 import Link from "next/link";
 import Image from "next/image";
 
@@ -348,6 +349,29 @@ const PRINTED_PARTS = [
     shopifyEnabled: true,
   },
   {
+    id: "headlight-bracket-pa50",
+    name: 'Honda PA50 4.5" Headlight Bracket',
+    description:
+      'Mount a 4.5" Euro-style headlight on your Honda PA50, with an integrated mount for a Trail Tech temp gauge. 3D printed from PAHT-CF for stiffness and heat resistance.',
+    price: "$20",
+    image: "/images/products/headlightBracketPA50.jpg",
+    images: [
+      "/images/products/headlightBracketPA50.jpg",
+      "/images/products/headlightBracketPA50_2.jpg",
+      "/images/products/headlightBracketPA50_3.jpg",
+      "/images/products/headlightBracketPA50_4.jpg",
+      "/images/products/headlightBracketPA50_5.jpg",
+      "/images/products/headlightBracketPA50_6.jpg",
+    ],
+    includes: [
+      "3D printed PAHT-CF headlight bracket",
+      'Fits 4.5" Euro-style headlights',
+      "Trail Tech temp gauge mount",
+    ],
+    availability: "In Stock",
+    shopifyEnabled: true,
+  },
+  {
     id: "ram-airbox",
     name: "Racing Airbox for Mopeds (RAM)",
     description:
@@ -463,7 +487,12 @@ export default function Shop() {
                 key={part.id}
                 className="flex flex-col overflow-hidden rounded-none border-4 border-black bg-white shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]"
               >
-                {part.image ? (
+                {part.images && part.images.length > 0 ? (
+                  <ProductImageCarousel
+                    images={part.images}
+                    alt={part.name}
+                  />
+                ) : part.image ? (
                   <div className="relative aspect-square w-full">
                     <Image
                       src={part.image}
