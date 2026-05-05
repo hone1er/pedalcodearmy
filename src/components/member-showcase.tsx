@@ -154,27 +154,6 @@ const members = [
     img: "hone.jpeg",
   },
   {
-    name: "Kyle Militante",
-    bio: "Co-founder, chief moped enthusiast, and occasional navigator",
-    mopeds: [
-      {
-        name: "Magnum",
-        image: "/images/milisMopeds/magnum.JPG",
-      },
-      {
-        name: "Pinto",
-        image: "/images/milisMopeds/pinto.JPG",
-      },
-      {
-        name: "Tomos",
-        image: "/images/milisMopeds/tomos.JPG",
-      },
-    ],
-    instagram: "milileaks",
-    youtube: "https://www.youtube.com/@benalbuckets",
-    img: "mili.jpeg",
-  },
-  {
     name: "Joshua Willing",
     bio: "Early member, moped mechanic extraordinaire, and collector of 'spare parts'",
     mopeds: [

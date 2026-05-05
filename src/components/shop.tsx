@@ -22,7 +22,10 @@ import {
 } from "lucide-react";
 import { ShopifyBuyButton } from "@/components/shopify-buy-button";
 import { CartButton, CartDrawer } from "@/components/cart";
-import { ProductImageCarousel } from "@/components/product-image-carousel";
+import {
+  ProductImageCarousel,
+  type CarouselMedia,
+} from "@/components/product-image-carousel";
 import Link from "next/link";
 import Image from "next/image";
 
@@ -325,6 +328,14 @@ const PRINTED_PARTS = [
       "Increases the rake/trail of the forks, creating a more stable bike. Essential upgrade for anyone pushing their Hobbit harder.",
     price: "$25",
     image: "/images/products/forkSpacers.JPG",
+    media: [
+      { type: "image", src: "/images/products/forkSpacers.JPG" },
+      {
+        type: "video",
+        src: "/videos/products/hobbit_fork_extensions.mp4",
+        poster: "/images/products/forkSpacers.JPG",
+      },
+    ] satisfies CarouselMedia[],
     includes: [
       "2x 3D printed fork spacers",
       "2x M10x1.25x60mm bolts",
@@ -340,6 +351,14 @@ const PRINTED_PARTS = [
       "Cheap replacement for the original tensioner. Keeps your pedal chain tight and your pedals spinning smooth.",
     price: "$20",
     image: "/images/products/chainTensioner.JPG",
+    media: [
+      { type: "image", src: "/images/products/chainTensioner.JPG" },
+      {
+        type: "video",
+        src: "/videos/products/hobbit_chain_tensioner.mp4",
+        poster: "/images/products/chainTensioner.JPG",
+      },
+    ] satisfies CarouselMedia[],
     includes: [
       "3D printed chain tensioner parts",
       "2x M5x22mm bolt",
@@ -355,14 +374,19 @@ const PRINTED_PARTS = [
       'Mount a 4.5" Euro-style headlight on your Honda PA50, with an integrated mount for a Trail Tech temp gauge. 3D printed from PAHT-CF for stiffness and heat resistance.',
     price: "$20",
     image: "/images/products/headlightBracketPA50.jpg",
-    images: [
-      "/images/products/headlightBracketPA50.jpg",
-      "/images/products/headlightBracketPA50_2.jpg",
-      "/images/products/headlightBracketPA50_3.jpg",
-      "/images/products/headlightBracketPA50_4.jpg",
-      "/images/products/headlightBracketPA50_5.jpg",
-      "/images/products/headlightBracketPA50_6.jpg",
-    ],
+    media: [
+      { type: "image", src: "/images/products/headlightBracketPA50.jpg" },
+      { type: "image", src: "/images/products/headlightBracketPA50_2.jpg" },
+      { type: "image", src: "/images/products/headlightBracketPA50_3.jpg" },
+      { type: "image", src: "/images/products/headlightBracketPA50_4.jpg" },
+      { type: "image", src: "/images/products/headlightBracketPA50_5.jpg" },
+      { type: "image", src: "/images/products/headlightBracketPA50_6.jpg" },
+      {
+        type: "video",
+        src: "/videos/products/headlightBracketPA50.mp4",
+        poster: "/images/products/headlightBracketPA50.jpg",
+      },
+    ] satisfies CarouselMedia[],
     includes: [
       "3D printed PAHT-CF headlight bracket",
       'Fits 4.5" Euro-style headlights',
@@ -476,9 +500,6 @@ export default function Shop() {
                 3D Printed Parts
               </h2>
             </div>
-            <p className="text-sm font-bold uppercase tracking-wide text-orange-600">
-              From Tokyo to Barcelona to Milano
-            </p>
           </div>
 
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -487,11 +508,8 @@ export default function Shop() {
                 key={part.id}
                 className="flex flex-col overflow-hidden rounded-none border-4 border-black bg-white shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]"
               >
-                {part.images && part.images.length > 0 ? (
-                  <ProductImageCarousel
-                    images={part.images}
-                    alt={part.name}
-                  />
+                {part.media && part.media.length > 0 ? (
+                  <ProductImageCarousel media={part.media} alt={part.name} />
                 ) : part.image ? (
                   <div className="relative aspect-square w-full">
                     <Image

@@ -62,7 +62,7 @@ export default function PedalCodeArmyLanding() {
             <div>
               <Image
                 src="/images/hone-derbi-grizzly.JPG"
-                alt="Founders Kyle and Joe with their mopeds"
+                alt="Founder Joe with his mopeds"
                 width={600}
                 height={400}
                 className="rounded-lg shadow-lg"
@@ -71,9 +71,8 @@ export default function PedalCodeArmyLanding() {
             <div>
               <p className="mb-4 text-lg">
                 Born from the streets of East Bay, Pedal Code Army was started
-                by Kyle Militante and Joe Villavicencio. We&apos;re a crew of
-                skateboarders who also fell in love with the thrill of riding
-                mopeds.
+                by Joe Villavicencio. We&apos;re a crew of skateboarders who
+                also fell in love with the thrill of riding mopeds.
               </p>
               <p className="mb-4 text-lg">
                 Our mission? To cruise the streets, have a blast, and maybe help
@@ -91,13 +90,6 @@ export default function PedalCodeArmyLanding() {
       {/* Community Features Section */}
       <section className="bg-black py-20 text-[#FFD700]">
         <div className="container mx-auto px-4">
-          <h2 className="mb-4 text-center text-4xl font-bold">
-            Community Tools
-          </h2>
-          <p className="mx-auto mb-12 max-w-2xl text-center text-white/70">
-            Resources built by moped nerds, for moped nerds. Browse builds,
-            troubleshoot problems, and plan your next project.
-          </p>
           <div className="mx-auto grid max-w-4xl gap-8 md:grid-cols-2">
             {/* The Stable */}
             <Link href="/stable" className="group">
@@ -174,14 +166,14 @@ export default function PedalCodeArmyLanding() {
               </div>
             ))}
           </div>
-          <div className="text-center">
+          {/* <div className="text-center">
             <Button
               size="lg"
               className="bg-black text-[#FFD700] hover:bg-gray-800"
             >
               View Ride Calendar
             </Button>
-          </div>
+          </div> */}
         </div>
       </section>
 

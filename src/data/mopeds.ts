@@ -189,38 +189,6 @@ export const mopeds: Moped[] = [
     image: "/images/honesMopeds/ssxl.jpeg",
   },
 
-  // Kyle Militante's mopeds
-  {
-    id: "kyle-magnum",
-    name: "Magnum",
-    make: "Puch",
-    model: "Magnum",
-    owner: "Kyle Militante",
-    ownerInstagram: "milileaks",
-    ownerImage: "/images/mili.jpeg",
-    image: "/images/milisMopeds/magnum.JPG",
-  },
-  {
-    id: "kyle-pinto",
-    name: "Pinto",
-    make: "Puch",
-    model: "Pinto",
-    owner: "Kyle Militante",
-    ownerInstagram: "milileaks",
-    ownerImage: "/images/mili.jpeg",
-    image: "/images/milisMopeds/pinto.JPG",
-  },
-  {
-    id: "kyle-tomos",
-    name: "Tomos",
-    make: "Tomos",
-    model: "Tomos",
-    owner: "Kyle Militante",
-    ownerInstagram: "milileaks",
-    ownerImage: "/images/mili.jpeg",
-    image: "/images/milisMopeds/tomos.JPG",
-  },
-
   // Joshua Willing's mopeds
   {
     id: "joshua-maxi",

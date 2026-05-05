@@ -123,7 +123,7 @@ export default function RootLayout({
               Proudly puttering around the streets of East Bay since...
               recently.
             </p>
-            <p className="mb-4">Founded by Kyle and Joe. Blame them for this madness.</p>
+            <p className="mb-4">Founded by Joe. Blame him for this madness.</p>
 
             <p className="mb-6">
               <a href="tel:+15103897975" className="hover:text-white hover:underline">
