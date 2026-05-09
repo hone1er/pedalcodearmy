@@ -447,47 +447,10 @@ export default function Shop() {
               Free Shipping on Orders Over $99
             </p>
           </div>
-
-          <div className="mx-auto max-w-2xl rounded-none border-4 border-black bg-white p-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
-            <p className="mb-4 text-gray-800">
-              We design and print parts for the mopeds manufacturers forgot
-              about. Hobbits, Variants, Ciaos - if it&apos;s broken and out of
-              production, we can probably print it.
-            </p>
-            <p className="mb-4 font-bold text-black">
-              Got a part that doesn&apos;t exist anymore?{" "}
-              <Link
-                href="mailto:pedalcodearmy@gmail.com?subject=Custom%203D%20Print%20Request"
-                className="text-orange-600 underline hover:text-orange-800"
-              >
-                Hit us up for custom work.
-              </Link>
-            </p>
-            <div className="flex items-center justify-center gap-6 border-t-2 border-black pt-4">
-              <Link
-                href="https://instagram.com/pedalcodearmy"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 font-bold text-black transition-colors hover:text-orange-600"
-              >
-                <Instagram className="h-5 w-5" />
-                <span className="text-sm">@pedalcodearmy</span>
-              </Link>
-              <Link
-                href="https://tiktok.com/@pedal.code"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 font-bold text-black transition-colors hover:text-orange-600"
-              >
-                <TikTokIcon className="h-5 w-5" />
-                <span className="text-sm">@pedal.code</span>
-              </Link>
-            </div>
-          </div>
         </div>
 
         {/* Moped Heritage Section */}
-        <MopedHeritage />
+        {/* <MopedHeritage /> */}
 
         <RetroStripe />
 
@@ -669,6 +632,43 @@ export default function Shop() {
             ))}
           </div>
         </section>
+
+        <div className="mx-auto mb-12 max-w-2xl rounded-none border-4 border-black bg-white p-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
+          <p className="mb-4 text-gray-800">
+            We design and print parts for the mopeds manufacturers forgot about.
+            Hobbits, Variants, Ciaos - if it&apos;s broken and out of
+            production, we can probably print it.
+          </p>
+          <p className="mb-4 font-bold text-black">
+            Got a part that doesn&apos;t exist anymore?{" "}
+            <Link
+              href="mailto:pedalcodearmy@gmail.com?subject=Custom%203D%20Print%20Request"
+              className="text-orange-600 underline hover:text-orange-800"
+            >
+              Hit us up for custom work.
+            </Link>
+          </p>
+          <div className="flex items-center justify-center gap-6 border-t-2 border-black pt-4">
+            <Link
+              href="https://instagram.com/pedalcodearmy"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 font-bold text-black transition-colors hover:text-orange-600"
+            >
+              <Instagram className="h-5 w-5" />
+              <span className="text-sm">@pedalcodearmy</span>
+            </Link>
+            <Link
+              href="https://tiktok.com/@pedal.code"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 font-bold text-black transition-colors hover:text-orange-600"
+            >
+              <TikTokIcon className="h-5 w-5" />
+              <span className="text-sm">@pedal.code</span>
+            </Link>
+          </div>
+        </div>
 
         {/* Contact CTA */}
         <section className="text-center">
