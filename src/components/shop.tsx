@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,9 +19,9 @@ import {
   Bell,
   Star,
   Check,
+  RefreshCw,
 } from "lucide-react";
 import { ShopifyBuyButton } from "@/components/shopify-buy-button";
-import { CartButton, CartDrawer } from "@/components/cart";
 import {
   ProductImageCarousel,
   type CarouselMedia,
@@ -30,11 +30,38 @@ import {
   SHOPIFY_VARIANT_IDS,
   extractNumericVariantId,
   fetchStorefrontProducts,
-  isStorefrontConfigured,
   type StorefrontProduct,
+  type StorefrontVariant,
 } from "@/lib/shopify";
 import Link from "next/link";
 import Image from "next/image";
+
+const CONTACT_EMAIL = "pedalcodearmy@gmail.com";
+const CARD_IMAGE_SIZES = "(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw";
+
+function mailtoHref(subject: string, body?: string): string {
+  const params = [`subject=${encodeURIComponent(subject)}`];
+  if (body) params.push(`body=${encodeURIComponent(body)}`);
+  return `mailto:${CONTACT_EMAIL}?${params.join("&")}`;
+}
+
+/** Read an API error message without assuming the response body is JSON. */
+async function readErrorMessage(response: Response, fallback: string): Promise<string> {
+  try {
+    const text = await response.text();
+    try {
+      const data = JSON.parse(text) as { error?: unknown };
+      if (typeof data.error === "string" && data.error.trim()) {
+        return data.error;
+      }
+    } catch {
+      // Not JSON (e.g. an HTML error page) — fall through.
+    }
+  } catch {
+    // Body unreadable — fall through.
+  }
+  return fallback;
+}
 
 function TikTokIcon({ className }: { className?: string }) {
   return (
@@ -43,6 +70,7 @@ function TikTokIcon({ className }: { className?: string }) {
       viewBox="0 0 24 24"
       fill="currentColor"
       xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
     >
       <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5 20.1a6.34 6.34 0 0 0 10.86-4.43v-7a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1-.1z" />
     </svg>
@@ -52,7 +80,7 @@ function TikTokIcon({ className }: { className?: string }) {
 function PlaceholderImage({ label }: { label: string }) {
   return (
     <div className="relative flex aspect-square w-full items-center justify-center bg-gradient-to-br from-amber-100 to-orange-100">
-      <div className="absolute inset-0 opacity-10">
+      <div className="absolute inset-0 opacity-10" aria-hidden="true">
         <div
           className="h-full w-full"
           style={{
@@ -66,8 +94,8 @@ function PlaceholderImage({ label }: { label: string }) {
           }}
         />
       </div>
-      <div className="text-center text-orange-400">
-        <Package className="mx-auto mb-2 h-12 w-12" />
+      <div className="text-center text-orange-900">
+        <Package className="mx-auto mb-2 h-12 w-12" aria-hidden="true" />
         <p className="text-sm font-bold">{label}</p>
       </div>
     </div>
@@ -76,70 +104,12 @@ function PlaceholderImage({ label }: { label: string }) {
 
 function RetroStripe() {
   return (
-    <div className="my-8 flex items-center justify-center gap-1">
+    <div className="my-8 flex items-center justify-center gap-1" aria-hidden="true">
       <div className="h-2 w-16 bg-orange-500" />
       <div className="h-2 w-8 bg-black" />
       <div className="h-2 w-16 bg-[#FFD700]" />
       <div className="h-2 w-8 bg-black" />
       <div className="h-2 w-16 bg-orange-500" />
-    </div>
-  );
-}
-
-function MopedBrandBadge({
-  brand,
-  country,
-  colors,
-}: {
-  brand: string;
-  country: string;
-  colors: string;
-}) {
-  return (
-    <div
-      className={`flex flex-col items-center rounded-none border-2 border-black p-3 ${colors}`}
-    >
-      <span className="text-xs font-bold uppercase tracking-wider opacity-70">
-        {country}
-      </span>
-      <span className="text-lg font-black uppercase tracking-tight">
-        {brand}
-      </span>
-    </div>
-  );
-}
-
-function MopedHeritage() {
-  return (
-    <div className="mb-8 rounded-none border-4 border-black bg-gradient-to-r from-amber-50 via-white to-amber-50 p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
-      <div className="mb-4 text-center">
-        <p className="text-xs font-bold uppercase tracking-widest text-gray-500">
-          We Specialize In
-        </p>
-        <h3 className="text-xl font-black uppercase tracking-tight text-black">
-          The Classics
-        </h3>
-      </div>
-      <div className="grid grid-cols-3 gap-3">
-        <MopedBrandBadge
-          brand="Honda Hobbit"
-          country="Japan"
-          colors="bg-gradient-to-b from-red-500 to-red-600 text-white"
-        />
-        <MopedBrandBadge
-          brand="Derbi Variant"
-          country="Spain"
-          colors="bg-gradient-to-b from-gray-800 to-black text-red-500"
-        />
-        <MopedBrandBadge
-          brand="Piaggio Ciao"
-          country="Italy"
-          colors="bg-gradient-to-b from-green-600 to-green-700 text-white"
-        />
-      </div>
-      <p className="mt-4 text-center text-xs text-gray-600">
-        Plus Puch, Tomos, Garelli, and whatever else you&apos;re wrenching on
-      </p>
     </div>
   );
 }
@@ -152,8 +122,8 @@ function RetroBadge({
   color?: "orange" | "gold" | "black";
 }) {
   const colors = {
-    orange: "bg-orange-500 text-white border-orange-700",
-    gold: "bg-[#FFD700] text-black border-yellow-600",
+    orange: "bg-orange-700 text-white border-black",
+    gold: "bg-[#FFD700] text-black border-black",
     black: "bg-black text-[#FFD700] border-gray-700",
   };
   return (
@@ -175,9 +145,15 @@ function WaitlistButton({
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
+  const [hpCheck, setHpCheck] = useState(""); // honeypot
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [error, setError] = useState("");
+  const fieldId = useId();
+  const nameId = `${fieldId}-name`;
+  const emailId = `${fieldId}-email`;
+  const hpCheckId = `${fieldId}-hp-check`;
+  const errorId = `${fieldId}-error`;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -195,12 +171,12 @@ function WaitlistButton({
           quantity: 1,
           estimatedPrice: productPrice,
           isCustom: false,
+          hpCheck,
         }),
       });
 
       if (!response.ok) {
-        const data = (await response.json()) as { error?: string };
-        throw new Error(data.error ?? "Failed to join waitlist");
+        throw new Error(await readErrorMessage(response, "Failed to join waitlist"));
       }
 
       setIsSuccess(true);
@@ -213,10 +189,11 @@ function WaitlistButton({
 
   const handleClose = () => {
     setOpen(false);
-    // Reset form after closing
+    // Reset form after the close animation
     setTimeout(() => {
       setEmail("");
       setName("");
+      setHpCheck("");
       setIsSuccess(false);
       setError("");
     }, 300);
@@ -225,20 +202,22 @@ function WaitlistButton({
   return (
     <>
       <button
+        type="button"
         onClick={() => setOpen(true)}
+        aria-haspopup="dialog"
         className="flex w-full items-center justify-center gap-2 rounded-none border-2 border-black bg-black py-3 text-sm font-black uppercase text-[#FFD700] transition-all hover:bg-gray-900 hover:shadow-[4px_4px_0px_0px_rgba(255,165,0,1)]"
       >
-        <Bell className="h-4 w-4" />
+        <Bell className="h-4 w-4" aria-hidden="true" />
         Get Notified
       </button>
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={(o) => (o ? setOpen(true) : handleClose())}>
         <DialogContent className="rounded-none border-4 border-black bg-white shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
           <DialogHeader>
             <DialogTitle className="text-xl font-black uppercase text-black">
               Join the Waitlist
             </DialogTitle>
-            <DialogDescription className="text-gray-600">
+            <DialogDescription className="text-gray-700">
               Get notified when{" "}
               <span className="font-bold text-black">{productName}</span> is
               available.
@@ -246,14 +225,14 @@ function WaitlistButton({
           </DialogHeader>
 
           {isSuccess ? (
-            <div className="py-6 text-center">
+            <div className="py-6 text-center" role="status">
               <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
-                <Check className="h-6 w-6 text-green-600" />
+                <Check className="h-6 w-6 text-green-700" aria-hidden="true" />
               </div>
               <h3 className="mb-2 text-lg font-black uppercase text-black">
                 You&apos;re on the list!
               </h3>
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-gray-700">
                 We&apos;ll email you when it&apos;s ready.
               </p>
               <Button
@@ -266,11 +245,14 @@ function WaitlistButton({
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="mb-2 block text-sm font-bold text-black">
+                <label htmlFor={nameId} className="mb-2 block text-sm font-bold text-black">
                   Name
                 </label>
                 <Input
+                  id={nameId}
+                  name="name"
                   type="text"
+                  autoComplete="name"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   required
@@ -279,21 +261,43 @@ function WaitlistButton({
                 />
               </div>
               <div>
-                <label className="mb-2 block text-sm font-bold text-black">
+                <label htmlFor={emailId} className="mb-2 block text-sm font-bold text-black">
                   Email
                 </label>
                 <Input
+                  id={emailId}
+                  name="email"
                   type="email"
+                  autoComplete="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
                   placeholder="you@example.com"
+                  aria-describedby={error ? errorId : undefined}
                   className="rounded-none border-2 border-black"
                 />
               </div>
 
+              {/* Honeypot: hidden from people, tempting to bots. The neutral
+                  name + autoComplete="new-password" keep browser contact
+                  autofill from filling it and flagging real shoppers. */}
+              <div className="absolute -left-[9999px] h-px w-px overflow-hidden" aria-hidden="true">
+                <label htmlFor={hpCheckId}>Leave this field empty</label>
+                <input
+                  id={hpCheckId}
+                  name="hpCheck"
+                  type="text"
+                  tabIndex={-1}
+                  autoComplete="new-password"
+                  value={hpCheck}
+                  onChange={(e) => setHpCheck(e.target.value)}
+                />
+              </div>
+
               {error && (
-                <p className="text-sm font-bold text-red-600">{error}</p>
+                <p id={errorId} role="alert" className="text-sm font-bold text-red-700">
+                  {error}
+                </p>
               )}
 
               <Button
@@ -326,6 +330,17 @@ interface ShopPart {
   shopifyEnabled?: boolean;
   shopifyVariantId?: string;
   availableForSale?: boolean;
+  /** Present only when the Shopify product has more than one variant. */
+  variants?: PartVariant[];
+  /** Shopify handle, used as the card's anchor so JSON-LD product URLs resolve. */
+  anchorId?: string;
+}
+
+interface PartVariant {
+  id: string;
+  title: string;
+  price: string;
+  availableForSale: boolean;
 }
 
 const PRINTED_PARTS: ShopPart[] = [
@@ -339,7 +354,7 @@ const PRINTED_PARTS: ShopPart[] = [
     image: "/images/products/SideCoverRight.png",
     includes: [
       "3D printed Puch Magnum side cover",
-      "Plain: $50 | Custom text: $60  per side",
+      "Plain: $50 | Custom text: $60 per side",
       "Durable PETG material",
     ],
     availability: "Coming Soon",
@@ -405,11 +420,6 @@ const PRINTED_PARTS: ShopPart[] = [
       { type: "image", src: "/images/products/headlightBracketPA50_4.jpg" },
       { type: "image", src: "/images/products/headlightBracketPA50_5.jpg" },
       { type: "image", src: "/images/products/headlightBracketPA50_6.jpg" },
-      {
-        type: "video",
-        src: "/videos/products/headlightBracketPA50.mp4",
-        poster: "/images/products/headlightBracketPA50.jpg",
-      },
     ],
     includes: [
       "3D printed PAHT-CF headlight bracket",
@@ -524,6 +534,16 @@ function formatShopifyPrice(amount: string, currencyCode = "USD"): string {
   return fixed.endsWith(".00")
     ? `${symbol}${fixed.slice(0, -3)}`
     : `${symbol}${fixed}`;
+}
+
+function toPartVariants(product: StorefrontProduct): PartVariant[] | undefined {
+  if (product.variants.length < 2) return undefined;
+  return product.variants.map((variant: StorefrontVariant) => ({
+    id: variant.id,
+    title: variant.title,
+    price: formatShopifyPrice(variant.price.amount, variant.price.currencyCode),
+    availableForSale: product.availableForSale && variant.availableForSale,
+  }));
 }
 
 function extractStorefrontMedia(product: StorefrontProduct): {
@@ -661,6 +681,7 @@ function mergeCatalog(shopifyProducts: StorefrontProduct[]): ShopPart[] {
   const mergedHardcoded: ShopPart[] = PRINTED_PARTS.map((part) => {
     const matched = matchedByPartId.get(part.id);
     if (!matched) return part;
+    const anchorId = matched.handle || undefined;
 
     const { media: shopifyMedia, model3dSlides, primaryImage } =
       extractStorefrontMedia(matched);
@@ -709,6 +730,8 @@ function mergeCatalog(shopifyProducts: StorefrontProduct[]): ShopPart[] {
           shopifyEnabled: true,
           shopifyVariantId: primaryVariant.id,
           availableForSale: isAvailable,
+          variants: toPartVariants(matched),
+          anchorId,
         };
       }
     }
@@ -740,6 +763,8 @@ function mergeCatalog(shopifyProducts: StorefrontProduct[]): ShopPart[] {
           availability: isAvailable ? "In Stock" : "Sold Out",
           shopifyVariantId: primaryVariant.id,
           availableForSale: isAvailable,
+          variants: toPartVariants(matched),
+          anchorId,
         };
       }
     }
@@ -747,6 +772,7 @@ function mergeCatalog(shopifyProducts: StorefrontProduct[]): ShopPart[] {
     return {
       ...part,
       media: mergedMedia,
+      anchorId,
     };
   });
 
@@ -779,6 +805,7 @@ function mergeCatalog(shopifyProducts: StorefrontProduct[]): ShopPart[] {
       shopifyEnabled: Boolean(primaryVariant),
       shopifyVariantId: primaryVariant?.id,
       availableForSale: isAvailable,
+      variants: toPartVariants(product),
     };
   });
 
@@ -796,186 +823,278 @@ const MOPEDS_FOR_SALE = [
   },
 ];
 
-interface ShopProps {
-  initialShopifyProducts?: StorefrontProduct[];
+function ProductCard({ part, isPriorityCard }: { part: ShopPart; isPriorityCard: boolean }) {
+  const selectId = useId();
+  const [selectedVariantId, setSelectedVariantId] = useState<string | undefined>(
+    part.shopifyVariantId,
+  );
+
+  // Keep the selection valid if the catalog refreshes underneath us.
+  const selectedVariant =
+    part.variants?.find((variant) => variant.id === selectedVariantId) ??
+    part.variants?.find((variant) => variant.id === part.shopifyVariantId);
+
+  const price = selectedVariant?.price ?? part.price;
+  const availableForSale = selectedVariant
+    ? selectedVariant.availableForSale
+    : part.availableForSale;
+  const availability = selectedVariant
+    ? selectedVariant.availableForSale
+      ? "In Stock"
+      : "Sold Out"
+    : part.availability;
+  const variantId = selectedVariant?.id ?? part.shopifyVariantId;
+  const productName = selectedVariant ? `${part.name} — ${selectedVariant.title}` : part.name;
+
+  return (
+    <Card
+      id={part.anchorId ?? part.id}
+      className="flex scroll-mt-24 flex-col overflow-hidden rounded-none border-4 border-black bg-white shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]"
+    >
+      {part.media && part.media.length > 0 ? (
+        <ProductImageCarousel
+          media={part.media}
+          alt={part.name}
+          isPriorityCard={isPriorityCard}
+        />
+      ) : part.image ? (
+        <div className="relative aspect-square w-full">
+          <Image
+            src={part.image}
+            alt={part.name}
+            fill
+            sizes={CARD_IMAGE_SIZES}
+            priority={isPriorityCard}
+            className="object-cover"
+          />
+        </div>
+      ) : (
+        <PlaceholderImage label="Product Photo" />
+      )}
+      <CardContent className="flex flex-1 flex-col p-4">
+        <h3 className="mb-2 text-lg font-black uppercase text-black">{part.name}</h3>
+
+        {part.description && (
+          <p className="mb-3 text-sm text-gray-700">{part.description}</p>
+        )}
+
+        {part.includes && part.includes.length > 0 && (
+          <div className="mb-3 rounded-none border-2 border-dashed border-gray-500 bg-amber-50 p-2">
+            <p className="mb-1 text-xs font-black uppercase text-black">
+              {part.includesTitle ?? "What's in the box:"}
+            </p>
+            <ul className="space-y-0.5 text-xs text-gray-800">
+              {part.includes.map((item, i) => (
+                <li key={i} className="flex items-start gap-1">
+                  <span className="font-bold text-orange-800" aria-hidden="true">
+                    +
+                  </span>
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <div className="mt-auto border-t-2 border-black pt-3">
+          {part.variants && part.variants.length > 1 && (
+            <div className="mb-3">
+              <label
+                htmlFor={selectId}
+                className="mb-1 block text-xs font-black uppercase text-black"
+              >
+                Option
+              </label>
+              <select
+                id={selectId}
+                value={selectedVariant?.id ?? ""}
+                onChange={(e) => setSelectedVariantId(e.target.value)}
+                className="w-full rounded-none border-2 border-black bg-white px-3 py-2 text-sm font-bold text-black focus:outline-none focus:ring-2 focus:ring-black"
+              >
+                {part.variants.map((variant) => (
+                  <option key={variant.id} value={variant.id}>
+                    {variant.title} — {variant.price}
+                    {variant.availableForSale ? "" : " (Sold out)"}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-2xl font-black text-black">
+              {price}
+              {part.priceLabel && (
+                <span className="text-sm font-bold text-gray-700"> {part.priceLabel}</span>
+              )}
+            </span>
+            <RetroBadge color={availability === "Sold Out" ? "black" : "orange"}>
+              {availability}
+            </RetroBadge>
+          </div>
+          {part.customizable ? (
+            <>
+              <Link
+                href="/shop/side-covers"
+                className="flex w-full items-center justify-center gap-2 rounded-none border-2 border-black bg-[#FFD700] py-3 text-sm font-black uppercase text-black transition-all hover:bg-yellow-400 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
+              >
+                Customize Yours
+              </Link>
+              <p className="mt-2 text-center text-xs font-bold uppercase tracking-wide text-gray-700">
+                Preview your custom text before ordering
+              </p>
+            </>
+          ) : part.shopifyEnabled ? (
+            <>
+              <ShopifyBuyButton
+                productId={part.id}
+                productName={productName}
+                price={price}
+                image={part.image ?? undefined}
+                variantId={variantId}
+                availableForSale={availableForSale}
+              />
+              <p className="mt-2 text-center text-xs font-bold uppercase tracking-wide text-gray-700">
+                Secure checkout via Shopify
+              </p>
+            </>
+          ) : (
+            <>
+              <WaitlistButton productName={part.name} productPrice={part.price} />
+              <p className="mt-2 text-center text-xs font-bold uppercase tracking-wide text-gray-700">
+                No payment until it&apos;s ready to ship
+              </p>
+            </>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
-export default function Shop({ initialShopifyProducts = [] }: ShopProps) {
+interface ShopProps {
+  initialShopifyProducts?: StorefrontProduct[];
+  /** True when the server couldn't load live Shopify products. */
+  initialLoadFailed?: boolean;
+}
+
+export default function Shop({
+  initialShopifyProducts = [],
+  initialLoadFailed = false,
+}: ShopProps) {
   const [shopifyProducts, setShopifyProducts] = useState<StorefrontProduct[]>(
     initialShopifyProducts,
   );
+  const [loadState, setLoadState] = useState<"ok" | "loading" | "failed">(
+    initialLoadFailed ? "loading" : "ok",
+  );
 
-  useEffect(() => {
-    if (!isStorefrontConfigured()) return;
-
-    let cancelled = false;
-    void fetchStorefrontProducts().then((products) => {
-      if (!cancelled && products.length > 0) {
-        setShopifyProducts(products);
-      }
-    });
-
-    return () => {
-      cancelled = true;
-    };
+  const loadProducts = useCallback(async () => {
+    setLoadState("loading");
+    try {
+      const products = await fetchStorefrontProducts({ throwOnError: true });
+      setShopifyProducts(products);
+      setLoadState("ok");
+    } catch (error) {
+      console.error("Failed to load live Shopify products:", error);
+      setLoadState("failed");
+    }
   }, []);
+
+  // Only refetch on the client when the server-side load failed; otherwise
+  // the server already delivered live products.
+  useEffect(() => {
+    if (initialLoadFailed) {
+      void loadProducts();
+    }
+  }, [initialLoadFailed, loadProducts]);
 
   const catalogParts = useMemo(
     () => mergeCatalog(shopifyProducts),
     [shopifyProducts],
   );
+
+  const inquiryHref = mailtoHref(
+    "Interested in Puch Maxi N",
+    "Hi, I'm interested in the Puch Maxi N you have for sale. Is it still available?",
+  );
+
   return (
     <>
-      <CartButton />
-      <CartDrawer />
       <div className="container mx-auto px-4 py-12">
         {/* Hero Section */}
         <div className="mb-8 text-center">
-          <div className="mb-4 flex items-center justify-center gap-3">
-            <Star className="h-8 w-8 text-orange-500" />
-            <Star className="h-6 w-6 text-[#FFD700]" />
-            <Star className="h-8 w-8 text-orange-500" />
+          <div className="mb-4 flex items-center justify-center gap-3" aria-hidden="true">
+            <Star className="h-8 w-8 text-black" />
+            <Star className="h-6 w-6 text-orange-700" />
+            <Star className="h-8 w-8 text-black" />
           </div>
           <h1 className="mb-2 text-5xl font-black uppercase tracking-tighter text-black md:text-7xl">
             Pedal Code
+            <span className="mt-2 block">
+              <span className="inline-block bg-black px-3 py-1 text-3xl tracking-tight text-[#FFD700] md:text-4xl">
+                Speed Shop
+              </span>
+            </span>
           </h1>
-          <h2 className="mb-4 text-3xl font-black uppercase tracking-tight text-orange-600 md:text-4xl">
-            Speed Shop
-          </h2>
-          <p className="mx-auto mb-6 max-w-md text-sm font-bold uppercase tracking-wide text-gray-600">
+          <p className="mx-auto mb-6 mt-4 max-w-md text-sm font-bold uppercase tracking-wide text-black">
             Keeping vintage two-strokes alive since recently
           </p>
 
           {/* Shipping Banner */}
-          <div className="mx-auto mb-6 max-w-md rounded-none border-2 border-black bg-[#FFD700] px-4 py-2 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">
+          <div className="mx-auto mb-6 max-w-md rounded-none border-2 border-black bg-white px-4 py-2 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">
             <p className="text-sm font-black uppercase text-black">
               Free Shipping on Orders Over $99
             </p>
           </div>
         </div>
 
-        {/* Moped Heritage Section */}
-        {/* <MopedHeritage /> */}
-
         <RetroStripe />
 
         {/* 3D Printed Parts Section */}
-        <section className="mb-16">
+        <section className="mb-16" aria-labelledby="printed-parts-heading">
           <div className="mb-8 flex flex-col items-center justify-center gap-2">
-            <div className="flex items-center gap-3">
-              <Printer className="h-8 w-8 text-black" />
-              <h2 className="text-3xl font-black uppercase tracking-tight text-black">
+            <div className="flex items-center gap-3 rounded-none border-4 border-black bg-white px-4 py-2 text-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+              <Printer className="h-8 w-8" aria-hidden="true" />
+              <h2
+                id="printed-parts-heading"
+                className="text-2xl font-black uppercase tracking-tight md:text-3xl"
+              >
                 3D Printed Parts
               </h2>
             </div>
           </div>
 
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {catalogParts.map((part) => (
-              <Card
-                key={part.id}
-                className="flex flex-col overflow-hidden rounded-none border-4 border-black bg-white shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]"
+          <div aria-live="polite">
+            {loadState === "loading" && (
+              <p className="mx-auto mb-6 max-w-md rounded-none border-2 border-black bg-white px-4 py-2 text-center text-sm font-bold text-black">
+                Loading live prices and availability…
+              </p>
+            )}
+            {loadState === "failed" && (
+              <div
+                role="alert"
+                className="mx-auto mb-6 flex max-w-xl flex-col items-center gap-3 rounded-none border-4 border-black bg-white p-4 text-center text-black sm:flex-row sm:text-left"
               >
-                {part.media && part.media.length > 0 ? (
-                  <ProductImageCarousel media={part.media} alt={part.name} />
-                ) : part.image ? (
-                  <div className="relative aspect-square w-full">
-                    <Image
-                      src={part.image}
-                      alt={part.name}
-                      fill
-                      className="object-cover"
-                    />
-                  </div>
-                ) : (
-                  <PlaceholderImage label="Product Photo" />
-                )}
-                <CardContent className="flex flex-1 flex-col p-4">
-                  <h3 className="mb-2 text-lg font-black uppercase text-black">
-                    {part.name}
-                  </h3>
+                <p className="flex-1 text-sm font-bold">
+                  We couldn&apos;t load live prices and stock from Shopify.
+                  Prices shown may be out of date.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void loadProducts()}
+                  className="flex items-center gap-2 rounded-none border-2 border-black bg-[#FFD700] px-4 py-2 text-sm font-black uppercase text-black hover:bg-yellow-400"
+                >
+                  <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                  Retry
+                </button>
+              </div>
+            )}
+          </div>
 
-                  {part.description && (
-                    <p className="mb-3 text-sm text-gray-600">
-                      {part.description}
-                    </p>
-                  )}
-
-                  {part.includes && part.includes.length > 0 && (
-                    <div className="mb-3 rounded-none border-2 border-dashed border-gray-400 bg-amber-50 p-2">
-                      <p className="mb-1 text-xs font-black uppercase text-black">
-                        {part.includesTitle ?? "What's in the box:"}
-                      </p>
-                      <ul className="space-y-0.5 text-xs text-gray-700">
-                        {part.includes.map((item, i) => (
-                          <li key={i} className="flex items-start gap-1">
-                            <span className="font-bold text-orange-500">+</span>
-                            {item}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  <div className="mt-auto border-t-2 border-black pt-3">
-                    <div className="mb-2 flex items-center justify-between">
-                      <span className="text-2xl font-black text-black">
-                        {part.price}
-                        {part.priceLabel && (
-                          <span className="text-sm font-bold text-gray-500">
-                            {" "}
-                            {part.priceLabel}
-                          </span>
-                        )}
-                      </span>
-                      <RetroBadge
-                        color={
-                          part.availability === "Sold Out" ? "black" : "orange"
-                        }
-                      >
-                        {part.availability}
-                      </RetroBadge>
-                    </div>
-                    {part.customizable ? (
-                      <>
-                        <Link
-                          href="/shop/side-covers"
-                          className="flex w-full items-center justify-center gap-2 rounded-none border-2 border-black bg-[#FFD700] py-3 text-sm font-black uppercase text-black transition-all hover:bg-yellow-400 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
-                        >
-                          Customize Yours
-                        </Link>
-                        <p className="mt-2 text-center text-[10px] font-bold uppercase tracking-wide text-gray-500">
-                          Preview your custom text before ordering
-                        </p>
-                      </>
-                    ) : part.shopifyEnabled ? (
-                      <>
-                        <ShopifyBuyButton
-                          productId={part.id}
-                          productName={part.name}
-                          price={part.price}
-                          image={part.image ?? undefined}
-                          variantId={part.shopifyVariantId}
-                          availableForSale={part.availableForSale}
-                        />
-                        <p className="mt-2 text-center text-[10px] font-bold uppercase tracking-wide text-gray-500">
-                          Secure checkout via Shopify
-                        </p>
-                      </>
-                    ) : (
-                      <>
-                        <WaitlistButton
-                          productName={part.name}
-                          productPrice={part.price}
-                        />
-                        <p className="mt-2 text-center text-[10px] font-bold uppercase tracking-wide text-gray-500">
-                          No payment until it&apos;s ready to ship
-                        </p>
-                      </>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {catalogParts.map((part, index) => (
+              <ProductCard key={part.id} part={part} isPriorityCard={index === 0} />
             ))}
           </div>
         </section>
@@ -983,15 +1102,18 @@ export default function Shop({ initialShopifyProducts = [] }: ShopProps) {
         <RetroStripe />
 
         {/* Mopeds for Sale Section */}
-        <section className="mb-16">
+        <section className="mb-16" aria-labelledby="mopeds-heading">
           <div className="mb-8 flex flex-col items-center justify-center gap-2">
-            <div className="flex items-center gap-3">
-              <Motorcycle className="h-8 w-8 text-black" />
-              <h2 className="text-3xl font-black uppercase tracking-tight text-black">
+            <div className="flex items-center gap-3 rounded-none border-4 border-black bg-white px-4 py-2 text-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+              <Motorcycle className="h-8 w-8" aria-hidden="true" />
+              <h2
+                id="mopeds-heading"
+                className="text-2xl font-black uppercase tracking-tight md:text-3xl"
+              >
                 Mopeds for Sale
               </h2>
             </div>
-            <p className="text-sm font-bold uppercase tracking-wide text-orange-600">
+            <p className="rounded-none bg-black px-3 py-1 text-sm font-bold uppercase tracking-wide text-[#FFD700]">
               Pre-mix perfection seeking new riders
             </p>
           </div>
@@ -1008,6 +1130,7 @@ export default function Shop({ initialShopifyProducts = [] }: ShopProps) {
                       src={moped.image}
                       alt={moped.name}
                       fill
+                      sizes="(max-width: 640px) 100vw, 512px"
                       className="object-cover"
                     />
                   </div>
@@ -1021,24 +1144,22 @@ export default function Shop({ initialShopifyProducts = [] }: ShopProps) {
                     </h3>
                     <RetroBadge color="gold">For Sale</RetroBadge>
                   </div>
-                  <p className="mb-2 text-xs font-black uppercase tracking-wider text-orange-600">
+                  <p className="mb-2 text-xs font-black uppercase tracking-wider text-orange-800">
                     {moped.specs}
                   </p>
-                  <p className="mb-4 text-sm text-gray-600">
-                    {moped.description}
-                  </p>
+                  <p className="mb-4 text-sm text-gray-700">{moped.description}</p>
                   <div className="border-t-2 border-black pt-3">
                     <div className="mb-3 text-center">
                       <span className="text-3xl font-black text-black">
                         {moped.price}
                       </span>
                     </div>
-                    <Link
-                      href="mailto:pedalcodearmy@gmail.com?subject=Interested in Puch Maxi N&body=Hi, I'm interested in the Puch Maxi N you have for sale. Is it still available?"
+                    <a
+                      href={inquiryHref}
                       className="flex w-full items-center justify-center gap-2 rounded-none border-2 border-black bg-[#FFD700] py-3 text-sm font-black uppercase text-black transition-all hover:bg-yellow-400 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
                     >
                       Inquire About This Ride
-                    </Link>
+                    </a>
                   </div>
                 </CardContent>
               </Card>
@@ -1046,7 +1167,7 @@ export default function Shop({ initialShopifyProducts = [] }: ShopProps) {
           </div>
         </section>
 
-        <div className="mx-auto mb-12 max-w-2xl rounded-none border-4 border-black bg-white p-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
+        <div className="mx-auto mb-12 max-w-2xl rounded-none border-4 border-black bg-white p-6 text-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
           <p className="mb-4 text-gray-800">
             We design and print parts for the mopeds manufacturers forgot about.
             Hobbits, Variants, Ciaos - if it&apos;s broken and out of
@@ -1054,32 +1175,34 @@ export default function Shop({ initialShopifyProducts = [] }: ShopProps) {
           </p>
           <p className="mb-4 font-bold text-black">
             Got a part that doesn&apos;t exist anymore?{" "}
-            <Link
-              href="mailto:pedalcodearmy@gmail.com?subject=Custom%203D%20Print%20Request"
-              className="text-orange-600 underline hover:text-orange-800"
+            <a
+              href={mailtoHref("Custom 3D Print Request")}
+              className="text-orange-800 underline hover:text-black"
             >
               Hit us up for custom work.
-            </Link>
+            </a>
           </p>
-          <div className="flex items-center justify-center gap-6 border-t-2 border-black pt-4">
-            <Link
+          <div className="flex flex-wrap items-center justify-center gap-6 border-t-2 border-black pt-4">
+            <a
               href="https://instagram.com/pedalcodearmy"
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-2 font-bold text-black transition-colors hover:text-orange-600"
+              className="flex items-center gap-2 font-bold text-black transition-colors hover:text-orange-800"
             >
-              <Instagram className="h-5 w-5" />
+              <Instagram className="h-5 w-5" aria-hidden="true" />
               <span className="text-sm">@pedalcodearmy</span>
-            </Link>
-            <Link
+              <span className="sr-only">(opens in a new tab)</span>
+            </a>
+            <a
               href="https://tiktok.com/@pedal.code"
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-2 font-bold text-black transition-colors hover:text-orange-600"
+              className="flex items-center gap-2 font-bold text-black transition-colors hover:text-orange-800"
             >
               <TikTokIcon className="h-5 w-5" />
               <span className="text-sm">@pedal.code</span>
-            </Link>
+              <span className="sr-only">(opens in a new tab)</span>
+            </a>
           </div>
         </div>
 
@@ -1091,27 +1214,28 @@ export default function Shop({ initialShopifyProducts = [] }: ShopProps) {
             </h3>
             <p className="mb-3 text-sm font-bold text-white">
               Slide into our{" "}
-              <Link
+              <a
                 href="https://instagram.com/pedalcodearmy"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-orange-400 underline hover:text-orange-300"
+                className="text-orange-300 underline hover:text-[#FFD700]"
               >
                 Instagram DMs
-              </Link>{" "}
+                <span className="sr-only"> (opens in a new tab)</span>
+              </a>{" "}
               or{" "}
-              <Link
-                href="mailto:pedalcodearmy@gmail.com"
-                className="text-orange-400 underline hover:text-orange-300"
+              <a
+                href={`mailto:${CONTACT_EMAIL}`}
+                className="text-orange-300 underline hover:text-[#FFD700]"
               >
                 shoot us an email
-              </Link>
+              </a>
             </p>
             <p className="text-sm font-bold text-white">
               Or call us:{" "}
               <a
                 href="tel:+15103897975"
-                className="text-orange-400 underline hover:text-orange-300"
+                className="text-orange-300 underline hover:text-[#FFD700]"
               >
                 (510) 389-7975
               </a>
