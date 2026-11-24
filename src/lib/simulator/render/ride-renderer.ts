@@ -1119,7 +1119,7 @@ export class RideRenderer {
     ctx.strokeStyle = "#09090B";
     ctx.lineWidth = 3;
 
-    // Front forks & handlebars
+    // Front forks (with black rubber gaiters on Derbi SL & Tomos A35; body-color uppers on Maxi & Hobbit)
     ctx.fillStyle = "#D4D4D8";
     ctx.beginPath();
     ctx.moveTo(32, -17);
@@ -1130,116 +1130,232 @@ export class RideRenderer {
     ctx.fill();
     ctx.stroke();
 
-    // Handlebars
-    ctx.strokeStyle = "#09090B";
-    ctx.lineWidth = 3.5;
+    ctx.strokeStyle =
+      make === "derbi-variant" || make === "tomos-a35" ? "#18181B" : colorHex;
+    ctx.lineWidth = 5;
     ctx.beginPath();
-    ctx.moveTo(20, -55);
-    ctx.lineTo(16, -65);
-    ctx.lineTo(8, -65);
+    ctx.moveTo(21, -52);
+    ctx.lineTo(28, -32);
     ctx.stroke();
 
-    // Make-specific silhouette
+    // Front fender (contrast black on Puch Maxi; body color on others)
+    ctx.strokeStyle = make === "puch-maxi" ? "#18181B" : colorHex;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(34, -17, 20, Math.PI * 1.15, Math.PI * 1.82);
+    ctx.stroke();
+
+    // Handlebars (lower swept on Derbi SL, higher swept on Maxi & Hobbit)
+    ctx.strokeStyle = make === "derbi-variant" ? "#27272A" : "#09090B";
+    ctx.lineWidth = 3.5;
+    ctx.beginPath();
+    if (make === "derbi-variant") {
+      ctx.moveTo(20, -55);
+      ctx.lineTo(15, -60);
+      ctx.lineTo(6, -59);
+    } else {
+      ctx.moveTo(20, -55);
+      ctx.lineTo(16, -66);
+      ctx.lineTo(7, -65);
+    }
+    ctx.stroke();
+
+    // Make-specific silhouette matching Pedal Code Army Stable reference photos
     ctx.fillStyle = colorHex;
     ctx.strokeStyle = "#09090B";
     ctx.lineWidth = 3;
 
     if (make === "puch-maxi") {
-      // Sweeping monocoque step-through backbone
+      // Stamped sheet-metal step-through monocoque + straight diagonal fuel tank + chrome side trim
       ctx.beginPath();
-      ctx.moveTo(-34, -36);
-      ctx.lineTo(-14, -44);
-      ctx.lineTo(0, -34);
-      ctx.lineTo(15, -49);
-      ctx.lineTo(22, -46);
-      ctx.lineTo(7, -26);
-      ctx.lineTo(-16, -26);
-      ctx.lineTo(-36, -30);
+      ctx.moveTo(-36, -34);
+      ctx.lineTo(-22, -44);
+      ctx.lineTo(-10, -44);
+      ctx.lineTo(-4, -31);
+      ctx.lineTo(6, -31);
+      ctx.lineTo(19, -51);
+      ctx.lineTo(24, -45);
+      ctx.lineTo(9, -24);
+      ctx.lineTo(-14, -24);
+      ctx.lineTo(-34, -28);
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
 
-      // Tank stripe accent
-      ctx.fillStyle = accentHex;
-      ctx.fillRect(6, -42, 11, 5);
+      // Chrome lower trim rail & black PUCH tank badge
+      ctx.strokeStyle = "#F4F4F5";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(-24, -40);
+      ctx.lineTo(-12, -28);
+      ctx.lineTo(7, -28);
+      ctx.stroke();
+
+      ctx.strokeStyle = "#18181B";
+      ctx.lineWidth = 3.5;
+      ctx.beginPath();
+      ctx.moveTo(9, -36);
+      ctx.lineTo(19, -46);
+      ctx.stroke();
+
+      // Chrome rear rack behind saddle
+      ctx.strokeStyle = "#E4E4E7";
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(-38, -42);
+      ctx.lineTo(-24, -42);
+      ctx.stroke();
     } else if (make === "honda-hobbit") {
-      // U-frame with rear under-rack tank & cream/accent downtube cover
+      // Deep step-through U-frame + long silver variator housing + iconic white/cream downtube leg-shield!
+      // Long silver vented PA50 variator swingarm cover
+      ctx.fillStyle = "#A1A1AA";
       ctx.beginPath();
-      ctx.moveTo(-36, -40);
-      ctx.lineTo(-10, -40);
-      ctx.lineTo(-4, -27);
-      ctx.lineTo(12, -27);
-      ctx.lineTo(18, -48);
-      ctx.lineTo(23, -46);
-      ctx.lineTo(16, -22);
-      ctx.lineTo(-12, -22);
-      ctx.lineTo(-36, -32);
+      ctx.roundRect(-34, -24, 34, 11, 5);
+      ctx.fill();
+      ctx.stroke();
+
+      // Painted rear U-frame & rack spine
+      ctx.fillStyle = colorHex;
+      ctx.beginPath();
+      ctx.moveTo(-37, -38);
+      ctx.lineTo(-14, -42);
+      ctx.lineTo(-6, -28);
+      ctx.lineTo(8, -28);
+      ctx.lineTo(19, -48);
+      ctx.lineTo(23, -44);
+      ctx.lineTo(11, -23);
+      ctx.lineTo(-12, -23);
+      ctx.lineTo(-35, -31);
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
 
-      // Hobbit signature downtube cover
-      ctx.fillStyle = "#FEF3C7";
-      ctx.fillRect(-3, -34, 15, 7);
-      ctx.strokeRect(-3, -34, 15, 7);
+      // Signature WHITE/CREAM front downtube shield + flat footboard
+      ctx.fillStyle = "#FAFAF9";
+      ctx.beginPath();
+      ctx.moveTo(-5, -28);
+      ctx.lineTo(8, -28);
+      ctx.lineTo(19, -47);
+      ctx.lineTo(23, -44);
+      ctx.lineTo(10, -24);
+      ctx.lineTo(-5, -24);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Wrap-around chrome rear rack
+      ctx.strokeStyle = "#E4E4E7";
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(-38, -43);
+      ctx.lineTo(-22, -43);
+      ctx.stroke();
     } else if (make === "derbi-variant") {
-      // Angular wedge monocoque
+      // Authentic Derbi Variant SL: boxy trapezoidal rear under-seat body + low flat step-through
+      // spine curving cleanly up a steep diagonal front downtube (NO top tank, NO fairing!)
       ctx.beginPath();
-      ctx.moveTo(-35, -39);
-      ctx.lineTo(-12, -46);
-      ctx.lineTo(2, -32);
-      ctx.lineTo(17, -50);
-      ctx.lineTo(25, -46);
-      ctx.lineTo(8, -24);
-      ctx.lineTo(-18, -24);
+      ctx.moveTo(-34, -43);
+      ctx.lineTo(-8, -43);
+      ctx.lineTo(-1, -29);
+      ctx.lineTo(11, -29);
+      ctx.lineTo(20, -51);
+      ctx.lineTo(25, -48);
+      ctx.lineTo(14, -23);
+      ctx.lineTo(-20, -23);
+      ctx.lineTo(-34, -34);
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
 
-      ctx.fillStyle = accentHex;
+      // Lower step-through rail accent stripe
+      ctx.strokeStyle = accentHex;
+      ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(-18, -33);
-      ctx.lineTo(4, -33);
-      ctx.lineTo(1, -27);
-      ctx.lineTo(-18, -27);
-      ctx.closePath();
-      ctx.fill();
+      ctx.moveTo(-16, -26);
+      ctx.lineTo(11, -26);
+      ctx.lineTo(20, -47);
+      ctx.stroke();
     } else {
-      // Tomos A35: horizontal top-tube box tank + boxy side cover + aero nose
+      // Authentic Tomos A35: chunky straight diagonal box-section tank + horizontal side-body skirt
+      // + angled seat tower + swept aerodynamic body-color front headlight cowling!
       ctx.beginPath();
-      ctx.moveTo(-34, -38);
-      ctx.lineTo(-10, -43);
-      ctx.lineTo(19, -45);
-      ctx.lineTo(23, -37);
-      ctx.lineTo(4, -24);
-      ctx.lineTo(-22, -24);
+      ctx.moveTo(-34, -30);
+      ctx.lineTo(-14, -42);
+      ctx.lineTo(-8, -42);
+      ctx.lineTo(-2, -30);
+      ctx.lineTo(6, -30);
+      ctx.lineTo(19, -51);
+      ctx.lineTo(24, -46);
+      ctx.lineTo(9, -24);
+      ctx.lineTo(-34, -24);
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
 
-      // Boxy top tank accent
+      // Horizontal A35 side skirt accent stripe
       ctx.fillStyle = accentHex;
-      ctx.fillRect(-4, -44, 20, 8);
-      ctx.strokeRect(-4, -44, 20, 8);
+      ctx.fillRect(-30, -28, 30, 3);
     }
 
-    // Saddle
+    // Saddle (long flat bench on Derbi SL, high-backed sloped solo on Hobbit, chunky flat-top on Maxi/Tomos)
     ctx.fillStyle = "#18181B";
-    ctx.beginPath();
-    ctx.roundRect(-24, -49, 22, 8, 3);
-    ctx.fill();
-    ctx.stroke();
-
-    // Headlight + beam
-    ctx.fillStyle = "#18181B";
-    ctx.beginPath();
-    if (make === "honda-hobbit" || make === "tomos-a35") {
-      ctx.rect(22, -55, 9, 8);
+    ctx.strokeStyle = "#09090B";
+    ctx.lineWidth = 2.5;
+    if (make === "derbi-variant") {
+      ctx.beginPath();
+      ctx.roundRect(-34, -50, 29, 7, 2);
+      ctx.fill();
+      ctx.stroke();
+    } else if (make === "honda-hobbit") {
+      ctx.beginPath();
+      ctx.moveTo(-26, -53);
+      ctx.lineTo(-6, -48);
+      ctx.lineTo(-7, -42);
+      ctx.lineTo(-26, -42);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
     } else {
+      ctx.beginPath();
+      ctx.roundRect(-27, -50, 22, 8, 3);
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    // Headlight + Tomos A35 front aero fairing + beam
+    ctx.strokeStyle = "#09090B";
+    ctx.lineWidth = 2.5;
+    if (make === "tomos-a35") {
+      // Iconic swept Tomos A35 aerodynamic front headlight cowling
+      ctx.fillStyle = colorHex;
+      ctx.beginPath();
+      ctx.moveTo(18, -62);
+      ctx.quadraticCurveTo(28, -58, 30, -45);
+      ctx.lineTo(21, -44);
+      ctx.lineTo(18, -54);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    } else if (make === "honda-hobbit") {
+      // Painted rectangular hooded Hobbit headlight
+      ctx.fillStyle = colorHex;
+      ctx.fillRect(21, -56, 10, 9);
+      ctx.strokeRect(21, -56, 10, 9);
+    } else if (make === "derbi-variant") {
+      // Classic round chrome headlight
+      ctx.fillStyle = "#D4D4D8";
+      ctx.beginPath();
+      ctx.arc(25, -52, 5.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    } else {
+      // Classic round black Puch Maxi headlight bucket
+      ctx.fillStyle = "#18181B";
+      ctx.beginPath();
       ctx.arc(25, -51, 5.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
     }
-    ctx.fill();
-    ctx.stroke();
 
     // Headlight lens + beam cone
     ctx.fillStyle = "#FEF08A";

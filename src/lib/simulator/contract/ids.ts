@@ -9,6 +9,7 @@ export type SimBikeMake =
 export type SimPhase =
   | "GARAGE"
   | "MAP"
+  | "RUNNER"
   | "RIDE"
   | "ROADSIDE"
   | "SHOP"

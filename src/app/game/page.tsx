@@ -1,21 +1,21 @@
 import { type Metadata } from "next";
-import { ArcadeHub } from "@/components/arcade/arcade-hub";
+import { SimulatorRoot } from "@/components/simulator/simulator-root";
 
 export const metadata: Metadata = {
-  title: "Arcade - Pedal Code Army",
+  title: "Ran When Parked - Moped Simulator & Street Runner",
   description:
-    "Play Pedal Code Army's East Bay moped games: Ran When Parked 2-stroke moped simulator and East Bay Runner 3D endless arcade.",
+    "Diagnose real 2-stroke moped symptoms, tune carbs & wrench in the garage, shakedown on East Bay routes, and dodge Oakland traffic in endless Street Runner mode.",
   openGraph: {
-    title: "Pedal Code Army Arcade",
+    title: "Ran When Parked | Pedal Code Army",
     description:
-      "Two East Bay moped games: diagnose & wrench in Ran When Parked, or dodge Oakland traffic in East Bay Runner.",
+      "Wrench on finicky 2-strokes, dial in your jetting on East Bay tuning rides, then take your build into endless Oakland Street Runner mode.",
   },
 };
 
-export default function GameArcadePage() {
+export default function GamePage() {
   return (
     <main id="main-content">
-      <ArcadeHub />
+      <SimulatorRoot />
     </main>
   );
 }
