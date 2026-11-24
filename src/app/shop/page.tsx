@@ -1,5 +1,8 @@
 import Shop from "@/components/shop";
+import { fetchStorefrontProducts } from "@/lib/shopify";
 import { type Metadata } from "next";
+
+export const revalidate = 60;
 
 export const metadata: Metadata = {
   title: "3D Printed Moped Parts | Pedal Code Army Speed Shop",
@@ -128,7 +131,9 @@ const jsonLd = {
   ],
 };
 
-export default function ShopPage() {
+export default async function ShopPage() {
+  const shopifyProducts = await fetchStorefrontProducts();
+
   return (
     <>
       <script
@@ -136,7 +141,7 @@ export default function ShopPage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
       <main className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-[#FFD700] to-[#15162c] text-white">
-        <Shop />
+        <Shop initialShopifyProducts={shopifyProducts} />
       </main>
     </>
   );

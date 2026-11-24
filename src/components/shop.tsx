@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,6 +26,13 @@ import {
   ProductImageCarousel,
   type CarouselMedia,
 } from "@/components/product-image-carousel";
+import {
+  SHOPIFY_VARIANT_IDS,
+  extractNumericVariantId,
+  fetchStorefrontProducts,
+  isStorefrontConfigured,
+  type StorefrontProduct,
+} from "@/lib/shopify";
 import Link from "next/link";
 import Image from "next/image";
 
@@ -304,7 +311,24 @@ function WaitlistButton({
   );
 }
 
-const PRINTED_PARTS = [
+interface ShopPart {
+  id: string;
+  name: string;
+  description: string;
+  price: string;
+  priceLabel?: string;
+  image: string | null;
+  media?: CarouselMedia[];
+  includes: string[] | null;
+  includesTitle?: string;
+  availability: string;
+  customizable?: boolean;
+  shopifyEnabled?: boolean;
+  shopifyVariantId?: string;
+  availableForSale?: boolean;
+}
+
+const PRINTED_PARTS: ShopPart[] = [
   {
     id: "side-covers",
     name: "Puch Magnum Side Covers",
@@ -335,7 +359,7 @@ const PRINTED_PARTS = [
         src: "/videos/products/hobbit_fork_extensions.mp4",
         poster: "/images/products/forkSpacers.JPG",
       },
-    ] satisfies CarouselMedia[],
+    ],
     includes: [
       "2x 3D printed fork spacers",
       "2x M10x1.25x60mm bolts",
@@ -358,7 +382,7 @@ const PRINTED_PARTS = [
         src: "/videos/products/hobbit_chain_tensioner.mp4",
         poster: "/images/products/chainTensioner.JPG",
       },
-    ] satisfies CarouselMedia[],
+    ],
     includes: [
       "3D printed chain tensioner parts",
       "2x M5x22mm bolt",
@@ -386,7 +410,7 @@ const PRINTED_PARTS = [
         src: "/videos/products/headlightBracketPA50.mp4",
         poster: "/images/products/headlightBracketPA50.jpg",
       },
-    ] satisfies CarouselMedia[],
+    ],
     includes: [
       "3D printed PAHT-CF headlight bracket",
       'Fits 4.5" Euro-style headlights',
@@ -407,6 +431,322 @@ const PRINTED_PARTS = [
   },
 ];
 
+const NAMED_HTML_ENTITIES: Record<string, string> = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  nbsp: " ",
+  mdash: "—",
+  ndash: "–",
+  times: "×",
+  deg: "°",
+  bull: "•",
+  hellip: "…",
+  rsquo: "’",
+  lsquo: "‘",
+  rdquo: "”",
+  ldquo: "“",
+};
+
+function decodeHtmlEntities(input: string): string {
+  return input.replace(
+    /&(#x[0-9a-fA-F]+|#\d+|[a-zA-Z]+);/g,
+    (match, entity: string) => {
+      if (entity.startsWith("#x") || entity.startsWith("#X")) {
+        const codePoint = Number.parseInt(entity.slice(2), 16);
+        return Number.isNaN(codePoint) ? match : String.fromCodePoint(codePoint);
+      }
+      if (entity.startsWith("#")) {
+        const codePoint = Number.parseInt(entity.slice(1), 10);
+        return Number.isNaN(codePoint) ? match : String.fromCodePoint(codePoint);
+      }
+      return NAMED_HTML_ENTITIES[entity.toLowerCase()] ?? match;
+    },
+  );
+}
+
+function stripHtmlTags(input: string): string {
+  return decodeHtmlEntities(
+    input.replace(/<br\s*\/?>/gi, " ").replace(/<[^>]+>/g, ""),
+  )
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function parseShopifyDescription(
+  descriptionHtml: string,
+  fallbackDescription: string,
+): { description: string; includes: string[] | null } {
+  const listItems: string[] = [];
+  const liRegex = /<li\b[^>]*>([\s\S]*?)<\/li>/gi;
+  let liMatch: RegExpExecArray | null;
+  while ((liMatch = liRegex.exec(descriptionHtml)) !== null) {
+    const cleaned = stripHtmlTags(liMatch[1] ?? "");
+    if (cleaned) {
+      listItems.push(cleaned);
+    }
+  }
+
+  const paragraphs: string[] = [];
+  const pRegex = /<p\b[^>]*>([\s\S]*?)<\/p>/gi;
+  let pMatch: RegExpExecArray | null;
+  while ((pMatch = pRegex.exec(descriptionHtml)) !== null) {
+    const cleaned = stripHtmlTags(pMatch[1] ?? "");
+    if (cleaned) {
+      paragraphs.push(cleaned);
+    }
+  }
+
+  let description = paragraphs.join(" ").trim();
+  if (!description && descriptionHtml) {
+    const withoutLists = descriptionHtml
+      .replace(/<ul\b[^>]*>[\s\S]*?<\/ul>/gi, " ")
+      .replace(/<ol\b[^>]*>[\s\S]*?<\/ol>/gi, " ");
+    description = stripHtmlTags(withoutLists);
+  }
+  if (!description) {
+    description = fallbackDescription.trim();
+  }
+
+  return {
+    description,
+    includes: listItems.length > 0 ? listItems : null,
+  };
+}
+
+function formatShopifyPrice(amount: string, currencyCode = "USD"): string {
+  const numeric = Number.parseFloat(amount);
+  if (Number.isNaN(numeric)) return amount;
+  const symbol = currencyCode === "USD" ? "$" : `${currencyCode} `;
+  const fixed = numeric.toFixed(2);
+  return fixed.endsWith(".00")
+    ? `${symbol}${fixed.slice(0, -3)}`
+    : `${symbol}${fixed}`;
+}
+
+function extractStorefrontMedia(product: StorefrontProduct): {
+  media: CarouselMedia[];
+  model3dSlides: CarouselMedia[];
+  primaryImage: string | null;
+} {
+  const images: CarouselMedia[] = [];
+  const videos: CarouselMedia[] = [];
+  const model3dSlides: CarouselMedia[] = [];
+
+  for (const item of product.media) {
+    if (item.mediaContentType === "IMAGE" && item.image?.url) {
+      images.push({
+        type: "image",
+        src: item.image.url,
+        alt: item.image.altText ?? item.alt ?? product.title,
+      });
+    } else if (item.mediaContentType === "VIDEO") {
+      const source =
+        item.sources.find((s) => s.mimeType.toLowerCase().includes("mp4")) ??
+        item.sources[0];
+      if (source?.url) {
+        videos.push({
+          type: "video",
+          src: source.url,
+          poster: item.previewImage?.url ?? undefined,
+        });
+      }
+    } else if (item.mediaContentType === "MODEL_3D") {
+      const glbSource = item.sources.find((s) => {
+        const cleanUrl = s.url.toLowerCase().split("?")[0] ?? "";
+        return (
+          s.format.toLowerCase() === "glb" ||
+          s.mimeType.toLowerCase() === "model/gltf-binary" ||
+          cleanUrl.endsWith(".glb")
+        );
+      });
+      if (glbSource?.url) {
+        const usdzSource = item.sources.find((s) => {
+          const cleanUrl = s.url.toLowerCase().split("?")[0] ?? "";
+          return (
+            s.format.toLowerCase() === "usdz" ||
+            s.mimeType.toLowerCase() === "model/vnd.usdz+zip" ||
+            cleanUrl.endsWith(".usdz")
+          );
+        });
+        model3dSlides.push({
+          type: "model3d",
+          src: glbSource.url,
+          poster: item.previewImage?.url ?? undefined,
+          usdzSrc: usdzSource?.url,
+          alt: item.alt ?? `${product.title} 3D model`,
+        });
+      }
+    }
+  }
+
+  const firstImage = images[0]?.src ?? null;
+  const firstModelPoster =
+    model3dSlides[0]?.type === "model3d"
+      ? (model3dSlides[0].poster ?? null)
+      : null;
+  const firstVideoPoster =
+    videos[0]?.type === "video" ? (videos[0].poster ?? null) : null;
+
+  return {
+    media: [...images, ...videos, ...model3dSlides],
+    model3dSlides,
+    primaryImage: firstImage ?? firstModelPoster ?? firstVideoPoster,
+  };
+}
+
+const HARDCODED_VARIANT_TO_PART_ID = new Map<string, string>(
+  Object.entries(SHOPIFY_VARIANT_IDS).map(([partId, variantId]) => [
+    extractNumericVariantId(variantId),
+    partId,
+  ]),
+);
+
+function matchHardcodedPartId(product: StorefrontProduct): string | null {
+  for (const variant of product.variants) {
+    const numericId = extractNumericVariantId(variant.id);
+    const matchedPartId = HARDCODED_VARIANT_TO_PART_ID.get(numericId);
+    if (matchedPartId) {
+      return matchedPartId;
+    }
+  }
+
+  const handle = product.handle.toLowerCase();
+  const title = product.title.toLowerCase();
+
+  if (handle.includes("side-cover") || title.includes("side cover")) {
+    return "side-covers";
+  }
+
+  if (
+    handle.includes("ram-airbox") ||
+    handle.includes("airbox") ||
+    title.includes("racing airbox") ||
+    title.includes("ram airbox")
+  ) {
+    return "ram-airbox";
+  }
+
+  if (PRINTED_PARTS.some((part) => part.id === handle)) {
+    return handle;
+  }
+
+  return null;
+}
+
+function mergeCatalog(shopifyProducts: StorefrontProduct[]): ShopPart[] {
+  const matchedByPartId = new Map<string, StorefrontProduct>();
+  const dynamicProducts: StorefrontProduct[] = [];
+
+  for (const product of shopifyProducts) {
+    const matchedId = matchHardcodedPartId(product);
+    if (matchedId) {
+      if (!matchedByPartId.has(matchedId)) {
+        matchedByPartId.set(matchedId, product);
+      }
+    } else {
+      dynamicProducts.push(product);
+    }
+  }
+
+  const mergedHardcoded: ShopPart[] = PRINTED_PARTS.map((part) => {
+    const matched = matchedByPartId.get(part.id);
+    if (!matched) return part;
+
+    const { media: shopifyMedia, model3dSlides, primaryImage } =
+      extractStorefrontMedia(matched);
+
+    let mergedMedia = part.media ? [...part.media] : undefined;
+    if (model3dSlides.length > 0) {
+      const baseMedia: CarouselMedia[] =
+        mergedMedia ?? (part.image ? [{ type: "image", src: part.image }] : []);
+      const existingSrcs = new Set(baseMedia.map((item) => item.src));
+      const newModels = model3dSlides.filter(
+        (slide) => !existingSrcs.has(slide.src),
+      );
+      mergedMedia = [...baseMedia, ...newModels];
+    }
+
+    if (part.id === "ram-airbox") {
+      const primaryVariant =
+        matched.variants.find((v) => v.availableForSale) ?? matched.variants[0];
+      if (primaryVariant) {
+        const isAvailable =
+          matched.availableForSale && primaryVariant.availableForSale;
+        const parsed = parseShopifyDescription(
+          matched.descriptionHtml,
+          matched.description,
+        );
+        return {
+          ...part,
+          price: formatShopifyPrice(
+            primaryVariant.price.amount,
+            primaryVariant.price.currencyCode,
+          ),
+          image: part.image ?? primaryImage,
+          media:
+            mergedMedia && mergedMedia.length > 0
+              ? mergedMedia
+              : shopifyMedia.length > 0
+                ? shopifyMedia
+                : undefined,
+          includes: part.includes ?? parsed.includes,
+          includesTitle: part.includes
+            ? part.includesTitle
+            : parsed.includes
+              ? "Specs / Details:"
+              : undefined,
+          availability: isAvailable ? "In Stock" : "Sold Out",
+          shopifyEnabled: true,
+          shopifyVariantId: primaryVariant.id,
+          availableForSale: isAvailable,
+        };
+      }
+    }
+
+    return {
+      ...part,
+      media: mergedMedia,
+    };
+  });
+
+  const dynamicParts: ShopPart[] = dynamicProducts.map((product) => {
+    const primaryVariant =
+      product.variants.find((v) => v.availableForSale) ?? product.variants[0];
+    const { media, primaryImage } = extractStorefrontMedia(product);
+    const { description, includes } = parseShopifyDescription(
+      product.descriptionHtml,
+      product.description,
+    );
+    const isAvailable =
+      product.availableForSale && (primaryVariant?.availableForSale ?? false);
+
+    return {
+      id: product.handle || product.id,
+      name: product.title,
+      description,
+      price: primaryVariant
+        ? formatShopifyPrice(
+            primaryVariant.price.amount,
+            primaryVariant.price.currencyCode,
+          )
+        : "TBD",
+      image: primaryImage,
+      media: media.length > 0 ? media : undefined,
+      includes,
+      includesTitle: "Specs / Details:",
+      availability: product.availableForSale ? "In Stock" : "Sold Out",
+      shopifyEnabled: Boolean(primaryVariant),
+      shopifyVariantId: primaryVariant?.id,
+      availableForSale: primaryVariant ? isAvailable : false,
+    };
+  });
+
+  return [...mergedHardcoded, ...dynamicParts];
+}
+
 const MOPEDS_FOR_SALE = [
   {
     name: "Puch Maxi N",
@@ -418,7 +758,34 @@ const MOPEDS_FOR_SALE = [
   },
 ];
 
-export default function Shop() {
+interface ShopProps {
+  initialShopifyProducts?: StorefrontProduct[];
+}
+
+export default function Shop({ initialShopifyProducts = [] }: ShopProps) {
+  const [shopifyProducts, setShopifyProducts] = useState<StorefrontProduct[]>(
+    initialShopifyProducts,
+  );
+
+  useEffect(() => {
+    if (!isStorefrontConfigured()) return;
+
+    let cancelled = false;
+    void fetchStorefrontProducts().then((products) => {
+      if (!cancelled && products.length > 0) {
+        setShopifyProducts(products);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const catalogParts = useMemo(
+    () => mergeCatalog(shopifyProducts),
+    [shopifyProducts],
+  );
   return (
     <>
       <CartButton />
@@ -466,7 +833,7 @@ export default function Shop() {
           </div>
 
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {PRINTED_PARTS.map((part) => (
+            {catalogParts.map((part) => (
               <Card
                 key={part.id}
                 className="flex flex-col overflow-hidden rounded-none border-4 border-black bg-white shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]"
@@ -490,14 +857,16 @@ export default function Shop() {
                     {part.name}
                   </h3>
 
-                  <p className="mb-3 text-sm text-gray-600">
-                    {part.description}
-                  </p>
+                  {part.description && (
+                    <p className="mb-3 text-sm text-gray-600">
+                      {part.description}
+                    </p>
+                  )}
 
-                  {part.includes && (
+                  {part.includes && part.includes.length > 0 && (
                     <div className="mb-3 rounded-none border-2 border-dashed border-gray-400 bg-amber-50 p-2">
                       <p className="mb-1 text-xs font-black uppercase text-black">
-                        What&apos;s in the box:
+                        {part.includesTitle ?? "What's in the box:"}
                       </p>
                       <ul className="space-y-0.5 text-xs text-gray-700">
                         {part.includes.map((item, i) => (
@@ -521,7 +890,11 @@ export default function Shop() {
                           </span>
                         )}
                       </span>
-                      <RetroBadge color="orange">
+                      <RetroBadge
+                        color={
+                          part.availability === "Sold Out" ? "black" : "orange"
+                        }
+                      >
                         {part.availability}
                       </RetroBadge>
                     </div>
@@ -544,6 +917,8 @@ export default function Shop() {
                           productName={part.name}
                           price={part.price}
                           image={part.image ?? undefined}
+                          variantId={part.shopifyVariantId}
+                          availableForSale={part.availableForSale}
                         />
                         <p className="mt-2 text-center text-[10px] font-bold uppercase tracking-wide text-gray-500">
                           Secure checkout via Shopify
