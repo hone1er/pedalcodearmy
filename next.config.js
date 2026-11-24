@@ -10,6 +10,8 @@ const config = {
     remotePatterns: [
       { protocol: "https", hostname: "cdn.shopify.com" },
       { protocol: "https", hostname: "*.shopifycdn.com" },
+      { protocol: "https", hostname: "shop.pedalcodearmy.com" },
+      { protocol: "https", hostname: "pca-moped-parts.myshopify.com" },
     ],
   },
 };
