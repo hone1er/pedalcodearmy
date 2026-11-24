@@ -43,8 +43,8 @@ const MAKE_LABELS: Record<SimBikeMake, string> = {
 };
 
 const BASE_HOTSPOTS: HotspotMeta[] = [
-  { id: "gas-tank", label: "Gas Tank & Petcock", short: "Tank", xPct: 50, yPct: 48 },
-  { id: "fuel-filter", label: "Inline Fuel Filter", short: "Fuel Line", xPct: 43, yPct: 50 },
+  { id: "gas-tank", label: "Gas Tank & Petcock", short: "Tank", xPct: 58, yPct: 47 },
+  { id: "fuel-filter", label: "Inline Fuel Filter", short: "Fuel Line", xPct: 43, yPct: 52 },
   { id: "carburetor", label: "Carburetor & Bowl", short: "Carb", xPct: 44, yPct: 62 },
   { id: "intake-gasket", label: "Intake Manifold & Gasket", short: "Intake", xPct: 54, yPct: 56 },
   { id: "spark-plug", label: "Spark Plug & Boot", short: "Plug", xPct: 64, yPct: 56 },
@@ -58,16 +58,19 @@ const BASE_HOTSPOTS: HotspotMeta[] = [
 function getHotspotsForMake(make: SimBikeMake): HotspotMeta[] {
   return BASE_HOTSPOTS.map((spot) => {
     if (make === "honda-hobbit") {
-      if (spot.id === "gas-tank") return { ...spot, xPct: 49, yPct: 32 };
-      if (spot.id === "clutch") return { ...spot, xPct: 35, yPct: 72 };
-      if (spot.id === "carburetor") return { ...spot, xPct: 44, yPct: 63 };
+      // Hobbit tank sits in rear subframe/under-rack; variator cover stretches along swingarm
+      if (spot.id === "gas-tank") return { ...spot, xPct: 33, yPct: 54 };
+      if (spot.id === "clutch") return { ...spot, xPct: 34, yPct: 71 };
+      if (spot.id === "carburetor") return { ...spot, xPct: 45, yPct: 63 };
     }
     if (make === "derbi-variant") {
-      if (spot.id === "gas-tank") return { ...spot, xPct: 54, yPct: 31 };
+      // Derbi Variant SL tank is the boxy trapezoidal enclosure under the flat bench seat
+      if (spot.id === "gas-tank") return { ...spot, xPct: 37, yPct: 55 };
+      if (spot.id === "fuel-filter") return { ...spot, xPct: 45, yPct: 59 };
       if (spot.id === "spark-plug") return { ...spot, xPct: 64, yPct: 57 };
     }
     if (make === "tomos-a35") {
-      if (spot.id === "gas-tank") return { ...spot, xPct: 53, yPct: 44 };
+      if (spot.id === "gas-tank") return { ...spot, xPct: 58, yPct: 46 };
       if (spot.id === "clutch") return { ...spot, xPct: 40, yPct: 73 };
     }
     return spot;
@@ -84,232 +87,82 @@ function BikeFrameGeometry({
   accentHex: string;
 }) {
   if (make === "honda-hobbit") {
+    // Authentic Honda Hobbit PA50 (from stable photos: yellowhobbit.jpeg, redhobbit.jpeg, milisMopeds/hobbit.JPG):
+    // Deep open step-through U-frame, signature white/cream front downtube leg-shield & footboard,
+    // long silver horizontal vented variator swingarm cover, sloped high-back solo saddle,
+    // chrome wrap-around rear rack, and painted hooded rectangular retro headlight.
     return (
       <g>
-        {/* Rear fender & chrome rack */}
+        {/* Curved painted rear fender & taillight */}
         <path
-          d="M 110 302 Q 160 225 244 260"
+          d="M 102 312 Q 154 232 248 256"
           fill="none"
           stroke={colorHex}
           strokeWidth="12"
           strokeLinecap="round"
         />
+        <rect x="92" y="258" width="20" height="18" rx="3" fill="#DC2626" stroke="#18181B" strokeWidth="2.5" />
+        {/* Signature wrap-around chrome rear luggage rack */}
         <path
-          d="M 118 242 L 222 242 L 204 268 L 136 268"
-          fill="none"
-          stroke="#D4D4D8"
-          strokeWidth="5"
-          strokeLinejoin="round"
-        />
-        {/* Swingarm + Honda PA50 belt-drive variator cover */}
-        <path
-          d="M 164 336 L 348 334"
-          stroke="#3F3F46"
-          strokeWidth="18"
-          strokeLinecap="round"
-        />
-        <rect
-          x="212"
-          y="314"
-          width="148"
-          height="42"
-          rx="20"
-          fill="#27272A"
-          stroke="#A1A1AA"
-          strokeWidth="3"
-        />
-        <circle cx="238" cy="335" r="14" fill="#18181B" stroke="#71717A" strokeWidth="2.5" />
-        <circle cx="336" cy="335" r="15" fill="#18181B" stroke="#FFD700" strokeWidth="2.5" />
-        {/* Boxy PA50 top tube & rectangular tank */}
-        <path
-          d="M 272 240 L 348 334 L 516 208 L 548 168"
-          fill="none"
-          stroke={colorHex}
-          strokeWidth="14"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        <rect
-          x="324"
-          y="134"
-          width="156"
-          height="52"
-          rx="10"
-          fill={colorHex}
-          stroke="#18181B"
-          strokeWidth="4"
-        />
-        {/* Tank stripe & cap */}
-        <rect x="336" y="154" width="132" height="11" fill={accentHex} />
-        <rect x="444" y="124" width="24" height="10" rx="3" fill="#D4D4D8" stroke="#18181B" strokeWidth="2" />
-        {/* Rear shocks */}
-        <line x1="176" y1="322" x2="246" y2="238" stroke="#E4E4E7" strokeWidth="7" strokeLinecap="round" />
-        <line x1="184" y1="312" x2="238" y2="248" stroke="#18181B" strokeWidth="9" strokeDasharray="4 5" />
-        {/* Saddle */}
-        <path
-          d="M 218 216 Q 255 198 314 210 L 308 238 L 216 236 Z"
-          fill="#18181B"
-          stroke="#71717A"
-          strokeWidth="3"
-        />
-        {/* Front forks & fender */}
-        <line x1="544" y1="146" x2="624" y2="336" stroke="#E4E4E7" strokeWidth="10" strokeLinecap="round" />
-        <line x1="556" y1="172" x2="616" y2="316" stroke={colorHex} strokeWidth="14" strokeLinecap="round" />
-        <path
-          d="M 556 274 Q 624 236 686 286"
-          fill="none"
-          stroke={colorHex}
-          strokeWidth="10"
-          strokeLinecap="round"
-        />
-        {/* Tall Hobbit handlebars & square retro headlight */}
-        <path
-          d="M 544 148 L 520 82 L 478 78"
+          d="M 106 226 L 234 226 M 126 226 L 106 272 L 194 276 L 222 226"
           fill="none"
           stroke="#E4E4E7"
-          strokeWidth="8"
+          strokeWidth="4.5"
           strokeLinecap="round"
           strokeLinejoin="round"
         />
-        <rect x="462" y="71" width="28" height="13" rx="6" fill="#18181B" stroke="#71717A" strokeWidth="2" />
-        <rect x="558" y="138" width="32" height="32" rx="5" fill="#18181B" stroke="#E4E4E7" strokeWidth="3" />
-        <rect x="582" y="143" width="10" height="22" rx="2" fill="#FEF08A" />
-      </g>
-    );
-  }
-
-  if (make === "derbi-variant") {
-    return (
-      <g>
-        {/* Sleek rear tail & fender */}
+        {/* Chunky shrouded Honda Hobbit rear shocks (cream/silver upper covers) */}
+        <line x1="170" y1="326" x2="226" y2="232" stroke="#D4D4D8" strokeWidth="7" strokeLinecap="round" />
+        <line x1="196" y1="282" x2="224" y2="235" stroke="#F4F4F5" strokeWidth="13" strokeLinecap="round" />
+        <line x1="196" y1="282" x2="224" y2="235" stroke="#18181B" strokeWidth="2" />
+        {/* Iconic long silver vented horizontal PA50 variator / belt-drive swingarm housing */}
         <path
-          d="M 108 302 Q 158 228 242 252"
-          fill="none"
-          stroke={colorHex}
-          strokeWidth="10"
-          strokeLinecap="round"
+          d="M 150 322 Q 150 304 176 304 L 364 314 Q 382 318 382 336 Q 382 354 360 356 L 176 360 Q 150 358 150 338 Z"
+          fill="#A1A1AA"
+          stroke="#18181B"
+          strokeWidth="3.5"
         />
-        {/* Swingarm */}
+        {/* Variator cooling louvers & rear clutch housing */}
+        {[236, 250, 264, 278, 292, 306].map((vx) => (
+          <line key={vx} x1={vx} y1="324" x2={vx} y2="344" stroke="#3F3F46" strokeWidth="3" strokeLinecap="round" />
+        ))}
+        <circle cx="178" cy="333" r="18" fill="#71717A" stroke="#18181B" strokeWidth="2.5" />
+        <circle cx="352" cy="335" r="14" fill="#52525B" stroke="#18181B" strokeWidth="2.5" />
+        {/* Rear painted U-frame sweep up to seat/subframe */}
         <path
-          d="M 164 336 L 368 334"
-          stroke="#52525B"
-          strokeWidth="14"
-          strokeLinecap="round"
-        />
-        {/* Rear shocks (sport angle) */}
-        <line x1="176" y1="322" x2="262" y2="232" stroke="#EF4444" strokeWidth="7" strokeLinecap="round" />
-        <line x1="186" y1="310" x2="252" y2="242" stroke="#18181B" strokeWidth="9" strokeDasharray="4 4" />
-        {/* Sculpted Derbi Variant frame & top tank */}
-        <path
-          d="M 248 234 L 368 334 L 516 254 L 548 164"
-          fill="none"
-          stroke={colorHex}
-          strokeWidth="14"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        <path
-          d="M 352 178 Q 422 134 522 152 L 512 204 L 364 218 Z"
+          d="M 224 226 L 266 226 L 306 286 Q 320 304 352 304 L 424 304 L 542 170 L 528 154 L 414 282 L 346 282 Q 326 282 316 266 L 274 222 L 224 222 Z"
           fill={colorHex}
           stroke="#18181B"
-          strokeWidth="4"
+          strokeWidth="3.5"
           strokeLinejoin="round"
         />
-        <path d="M 366 184 L 508 172 L 504 184 L 368 196 Z" fill={accentHex} />
-        <rect x="466" y="138" width="22" height="10" rx="3" fill="#E4E4E7" stroke="#18181B" strokeWidth="2" />
-        {/* Long sport banana saddle */}
+        {/* Signature WHITE / CREAM plastic Hobbit downtube leg-shield & flat footboard */}
         <path
-          d="M 178 206 L 352 192 L 356 226 L 182 232 Z"
-          fill="#18181B"
-          stroke="#71717A"
-          strokeWidth="3"
-          strokeLinejoin="round"
-        />
-        {/* Front telescopic fork & sport fairing */}
-        <line x1="546" y1="150" x2="626" y2="336" stroke="#D4D4D8" strokeWidth="10" strokeLinecap="round" />
-        <line x1="556" y1="178" x2="588" y2="254" stroke="#18181B" strokeWidth="15" strokeLinecap="round" />
-        <path
-          d="M 556 278 Q 624 242 686 286"
-          fill="none"
-          stroke={colorHex}
-          strokeWidth="9"
-          strokeLinecap="round"
-        />
-        {/* Low-rise sport bars & cowl */}
-        <path
-          d="M 544 150 L 528 106 L 490 108"
-          fill="none"
-          stroke="#E4E4E7"
-          strokeWidth="7"
-          strokeLinecap="round"
-        />
-        <rect x="472" y="101" width="28" height="13" rx="6" fill="#18181B" stroke="#71717A" strokeWidth="2" />
-        <path
-          d="M 548 124 L 594 142 L 584 186 L 544 176 Z"
-          fill={colorHex}
+          d="M 326 290 L 424 290 L 528 176 L 544 190 L 434 310 L 326 310 Z"
+          fill="#FAFAF9"
           stroke="#18181B"
-          strokeWidth="3"
-        />
-        <polygon points="586,144 596,147 590,176 581,174" fill="#FEF08A" />
-      </g>
-    );
-  }
-
-  if (make === "tomos-a35") {
-    return (
-      <g>
-        {/* Rear fender & heavy Dutch rack */}
-        <path
-          d="M 104 306 Q 158 228 248 258"
-          fill="none"
-          stroke={colorHex}
-          strokeWidth="12"
-          strokeLinecap="round"
-        />
-        <path
-          d="M 108 238 L 222 238 L 210 264 L 122 264 Z"
-          fill="none"
-          stroke="#18181B"
-          strokeWidth="6"
+          strokeWidth="3.5"
           strokeLinejoin="round"
         />
+        {/* Subtle HONDA downtube stripe */}
+        <path d="M 438 280 L 516 196" stroke="#18181B" strokeWidth="5" strokeLinecap="round" opacity="0.7" />
+        <rect x="336" y="295" width="84" height="6" rx="2" fill="#D4D4D8" />
+        {/* Signature Hobbit sloped chunky black solo saddle (higher at rear, sloped forward) */}
         <path
-          d="M 108 238 L 222 238"
-          stroke="#D4D4D8"
-          strokeWidth="3"
-        />
-        {/* Boxy swingarm & rear shocks */}
-        <path d="M 164 336 L 356 334" stroke={colorHex} strokeWidth="14" strokeLinecap="round" />
-        <line x1="176" y1="322" x2="246" y2="236" stroke="#E4E4E7" strokeWidth="7" strokeLinecap="round" />
-        <line x1="184" y1="312" x2="238" y2="246" stroke="#18181B" strokeWidth="9" strokeDasharray="4 4" />
-        {/* Iconic chunky Tomos A35 stamped diagonal fuel-tank backbone */}
-        <path
-          d="M 244 248 L 352 332 L 534 196 L 548 156 L 494 172 L 336 274 L 258 224 Z"
-          fill={colorHex}
-          stroke="#18181B"
-          strokeWidth="4"
-          strokeLinejoin="round"
-        />
-        {/* Tank accent graphic & cap */}
-        <path d="M 358 272 L 502 184 L 512 196 L 368 286 Z" fill={accentHex} />
-        <rect x="478" y="160" width="22" height="10" rx="3" fill="#18181B" stroke="#E4E4E7" strokeWidth="2" />
-        {/* Side plastic panel */}
-        <polygon
-          points="296,266 368,266 382,318 308,318"
+          d="M 198 186 Q 222 178 242 192 L 310 202 Q 318 208 310 226 L 200 226 Q 192 212 198 186 Z"
           fill="#18181B"
           stroke="#52525B"
-          strokeWidth="2.5"
-        />
-        {/* Padded Tomos seat */}
-        <path
-          d="M 206 206 Q 260 194 316 208 L 308 238 L 210 236 Z"
-          fill="#18181B"
-          stroke="#71717A"
           strokeWidth="3"
+          strokeLinejoin="round"
         />
-        {/* Front forks & fender */}
-        <line x1="546" y1="150" x2="624" y2="336" stroke="#D4D4D8" strokeWidth="10" strokeLinecap="round" />
-        <line x1="560" y1="184" x2="588" y2="252" stroke="#18181B" strokeWidth="15" strokeLinecap="round" />
+        {/* Painted Hobbit front forks & front fender */}
+        <line x1="542" y1="150" x2="624" y2="336" stroke="#E4E4E7" strokeWidth="9" strokeLinecap="round" />
+        <line x1="544" y1="156" x2="588" y2="256" stroke={colorHex} strokeWidth="14" strokeLinecap="round" />
+        {/* Front rectangular Honda horn/emblem plate on fork crown */}
+        <rect x="546" y="168" width="18" height="30" rx="3" fill={colorHex} stroke="#18181B" strokeWidth="2.5" />
+        <line x1="550" y1="180" x2="560" y2="180" stroke="#18181B" strokeWidth="2" />
+        <line x1="550" y1="186" x2="560" y2="186" stroke="#18181B" strokeWidth="2" />
+        {/* Front fender */}
         <path
           d="M 556 278 Q 624 238 686 286"
           fill="none"
@@ -317,83 +170,310 @@ function BikeFrameGeometry({
           strokeWidth="10"
           strokeLinecap="round"
         />
-        {/* Bars & Tomos rectangular headlight pod */}
+        {/* Tall swept chrome cruiser handlebars */}
         <path
-          d="M 544 150 L 526 94 L 484 92"
+          d="M 542 150 L 520 84 L 474 88"
           fill="none"
           stroke="#E4E4E7"
-          strokeWidth="8"
+          strokeWidth="7.5"
           strokeLinecap="round"
+          strokeLinejoin="round"
         />
-        <rect x="466" y="85" width="28" height="13" rx="6" fill="#18181B" stroke="#71717A" strokeWidth="2" />
-        <rect x="556" y="138" width="34" height="28" rx="4" fill="#18181B" stroke="#E4E4E7" strokeWidth="2.5" />
-        <rect x="582" y="142" width="10" height="20" rx="2" fill="#FEF08A" />
+        <rect x="458" y="81" width="28" height="13" rx="6" fill="#18181B" stroke="#71717A" strokeWidth="2" />
+        {/* Iconic body-color hooded rectangular retro Hobbit headlight */}
+        <path
+          d="M 552 132 L 588 136 L 592 164 L 552 166 Z"
+          fill={colorHex}
+          stroke="#18181B"
+          strokeWidth="3"
+          strokeLinejoin="round"
+        />
+        <rect x="582" y="139" width="11" height="22" rx="2" fill="#FEF08A" stroke="#18181B" strokeWidth="2" />
+        {/* Amber front turn indicator */}
+        <circle cx="562" cy="176" r="6" fill="#F59E0B" stroke="#18181B" strokeWidth="2" />
       </g>
     );
   }
 
-  // Default: Puch Maxi (iconic stamped step-through sheet-metal backbone!)
+  if (make === "derbi-variant") {
+    // Authentic Derbi Variant SL (from stable photos: whitederbisl.jpeg & blackderbisl.jpeg):
+    // Deep low step-through pressed-steel monocoque — NO top tank, NO fairing!
+    // Boxy trapezoidal rear under-seat body/tank enclosure with "DERBI SL" crest,
+    // long flat black bench seat sitting flush on top, flat horizontal lower spine ("DERBI")
+    // curving cleanly up a steep ribbed diagonal front downtube, black fork gaiter boots,
+    // low swept bars, and classic round chrome headlight!
+    return (
+      <g>
+        {/* Rear curved body-color fender & boxy red taillight */}
+        <path
+          d="M 96 314 Q 146 232 238 248"
+          fill="none"
+          stroke={colorHex}
+          strokeWidth="12"
+          strokeLinecap="round"
+        />
+        <rect x="94" y="246" width="22" height="26" rx="3" fill="#DC2626" stroke="#18181B" strokeWidth="2.5" />
+        {/* Rear swingarm */}
+        <path d="M 164 336 L 348 334" stroke="#27272A" strokeWidth="12" strokeLinecap="round" />
+        {/* Dual angled silver coil shocks */}
+        <line x1="170" y1="324" x2="224" y2="238" stroke="#D4D4D8" strokeWidth="7" strokeLinecap="round" />
+        <line x1="178" y1="312" x2="216" y2="250" stroke="#18181B" strokeWidth="9.5" strokeDasharray="4 4" />
+        {/* Iconic Derbi Variant SL deep step-through monocoque + boxy trapezoidal rear tank body */}
+        <path
+          d="M 200 226 L 336 226 L 368 292 L 454 292 Q 480 292 496 266 L 542 156 L 560 166 L 512 280 Q 492 316 454 316 L 266 316 L 246 296 L 210 248 Z"
+          fill={colorHex}
+          stroke="#18181B"
+          strokeWidth="4"
+          strokeLinejoin="round"
+        />
+        {/* Stamped parallel ribs along the steep diagonal downtube & lower rail */}
+        <path
+          d="M 358 302 L 456 302 Q 484 302 500 274 L 546 168"
+          fill="none"
+          stroke={accentHex}
+          strokeWidth="4"
+          strokeLinecap="round"
+          opacity="0.85"
+        />
+        {/* Signature DERBI SL laurel crest badge on the boxy rear enclosure */}
+        <circle cx="292" cy="264" r="14" fill="none" stroke={accentHex} strokeWidth="2.5" opacity="0.9" />
+        <text
+          x="292"
+          y="268"
+          textAnchor="middle"
+          fill={accentHex}
+          fontSize="11"
+          fontWeight="900"
+          fontFamily="sans-serif"
+        >
+          SL
+        </text>
+        {/* Lower rail DERBI bar stripe */}
+        <rect x="292" y="298" width="56" height="8" rx="2" fill="#18181B" />
+        {/* Long flat black Derbi Variant bench seat sitting flush on boxy rear body */}
+        <path
+          d="M 184 202 Q 198 192 222 198 L 344 202 Q 350 206 346 226 L 194 226 Q 180 220 184 202 Z"
+          fill="#18181B"
+          stroke="#52525B"
+          strokeWidth="3"
+          strokeLinejoin="round"
+        />
+        {/* Front telescopic fork with signature BLACK FORK GAITERS */}
+        <line x1="546" y1="150" x2="624" y2="336" stroke="#E4E4E7" strokeWidth="9" strokeLinecap="round" />
+        <line x1="556" y1="176" x2="594" y2="266" stroke="#18181B" strokeWidth="16" strokeLinecap="round" />
+        {/* Fork gaiter accordion ribs */}
+        <line x1="558" y1="184" x2="592" y2="262" stroke="#3F3F46" strokeWidth="14" strokeDasharray="4 4" />
+        {/* Amber side fork reflector */}
+        <rect x="548" y="176" width="8" height="20" rx="2" fill="#F59E0B" stroke="#18181B" strokeWidth="1.5" />
+        {/* Curved body-color front fender & silver stay */}
+        <path
+          d="M 556 278 Q 624 238 686 286"
+          fill="none"
+          stroke={colorHex}
+          strokeWidth="10"
+          strokeLinecap="round"
+        />
+        <line x1="572" y1="286" x2="624" y2="336" stroke="#D4D4D8" strokeWidth="3" />
+        {/* Low-swept black handlebars */}
+        <path
+          d="M 544 150 L 520 116 L 466 122"
+          fill="none"
+          stroke="#27272A"
+          strokeWidth="7.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <rect x="452" y="115" width="28" height="13" rx="6" fill="#18181B" stroke="#71717A" strokeWidth="2" />
+        {/* Classic round chrome headlight (NO fairing on Variant SL!) */}
+        <circle cx="574" cy="152" r="18" fill="#D4D4D8" stroke="#18181B" strokeWidth="3" />
+        <path d="M 584 137 A 16 16 0 0 1 584 167 Z" fill="#FEF08A" />
+      </g>
+    );
+  }
+
+  if (make === "tomos-a35") {
+    // Authentic Tomos A35 (from stable photo: milisMopeds/tomos.JPG):
+    // Chunky straight box-section diagonal fuel-tank backbone, sleek horizontal rear side-panel body skirt,
+    // angled seat tower with sculpted black saddle, rear rack, rubber fork gaiters,
+    // AND signature swept aerodynamic Tomos A35 front headlight cowling!
+    return (
+      <g>
+        {/* Rear curved fender & chrome rear rack */}
+        <path
+          d="M 102 308 Q 158 232 248 256"
+          fill="none"
+          stroke={colorHex}
+          strokeWidth="11"
+          strokeLinecap="round"
+        />
+        <path
+          d="M 110 238 L 216 238 L 204 264 L 124 264"
+          fill="none"
+          stroke="#D4D4D8"
+          strokeWidth="4.5"
+          strokeLinejoin="round"
+        />
+        <rect x="96" y="256" width="18" height="18" rx="3" fill="#DC2626" stroke="#18181B" strokeWidth="2" />
+        {/* Boxy rear swingarm & angled silver coil shocks */}
+        <path d="M 164 336 L 354 334" stroke="#A1A1AA" strokeWidth="12" strokeLinecap="round" />
+        <line x1="170" y1="324" x2="246" y2="238" stroke="#E4E4E7" strokeWidth="7" strokeLinecap="round" />
+        <line x1="180" y1="312" x2="236" y2="250" stroke="#18181B" strokeWidth="9" strokeDasharray="4 4" />
+        {/* Angled seat-post tower */}
+        <path
+          d="M 264 232 L 294 232 L 330 292 L 298 292 Z"
+          fill={colorHex}
+          stroke="#18181B"
+          strokeWidth="3.5"
+          strokeLinejoin="round"
+        />
+        {/* Iconic Tomos A35 straight box-section diagonal fuel-tank backbone */}
+        <path
+          d="M 382 288 L 530 156 L 552 178 L 414 312 L 218 308 L 212 282 L 382 286 Z"
+          fill={colorHex}
+          stroke="#18181B"
+          strokeWidth="4"
+          strokeLinejoin="round"
+        />
+        {/* Horizontal A35 side-cover trim & chrome gas cap near top of tank */}
+        <rect x="234" y="290" width="146" height="8" rx="2" fill={accentHex} opacity="0.85" />
+        <circle cx="516" cy="168" r="7" fill="#E4E4E7" stroke="#18181B" strokeWidth="2.5" />
+        {/* Sculpted black Tomos moped saddle */}
+        <path
+          d="M 206 202 Q 258 190 318 204 L 310 234 L 210 232 Z"
+          fill="#18181B"
+          stroke="#52525B"
+          strokeWidth="3"
+          strokeLinejoin="round"
+        />
+        {/* Front telescopic forks with accordion rubber gaiters */}
+        <line x1="546" y1="150" x2="624" y2="336" stroke="#E4E4E7" strokeWidth="9.5" strokeLinecap="round" />
+        <line x1="564" y1="194" x2="588" y2="250" stroke="#18181B" strokeWidth="15" strokeLinecap="round" />
+        <line x1="566" y1="198" x2="586" y2="246" stroke="#52525B" strokeWidth="13" strokeDasharray="3 3" />
+        {/* Body-color front fender & silver stay */}
+        <path
+          d="M 556 276 Q 624 236 686 284"
+          fill="none"
+          stroke={colorHex}
+          strokeWidth="10"
+          strokeLinecap="round"
+        />
+        <line x1="572" y1="286" x2="624" y2="336" stroke="#D4D4D8" strokeWidth="3" />
+        {/* Handlebars */}
+        <path
+          d="M 544 150 L 524 98 L 484 100"
+          fill="none"
+          stroke="#27272A"
+          strokeWidth="7.5"
+          strokeLinecap="round"
+        />
+        <rect x="466" y="93" width="28" height="13" rx="6" fill="#18181B" stroke="#71717A" strokeWidth="2" />
+        {/* Signature Tomos A35 aerodynamic curved front headlight fairing / cowl */}
+        <path
+          d="M 538 106 Q 584 120 594 176 L 556 184 L 542 152 Z"
+          fill={colorHex}
+          stroke="#18181B"
+          strokeWidth="3.5"
+          strokeLinejoin="round"
+        />
+        <polygon points="582,146 593,149 590,174 580,173" fill="#FEF08A" stroke="#18181B" strokeWidth="1.5" />
+        {/* Amber front blinker */}
+        <rect x="562" y="160" width="12" height="8" rx="2" fill="#F59E0B" stroke="#18181B" strokeWidth="1.5" />
+      </g>
+    );
+  }
+
+  // Authentic Puch Maxi (from stable photo: honesMopeds/maxi.JPG — Little Yellow Maxi!):
+  // Stamped sheet-metal step-through monocoque with straight ~38° diagonal fuel tank ("PUCH"),
+  // low flat step-through pan with signature chrome side trim rail, chunky flat-top rectangular
+  // buddy saddle mounted low & snug on the frame tower, chrome wire rear rack, contrast black
+  // front fender, black dual coil shocks, and classic round black headlight + speedo pod!
   return (
     <g>
-      {/* Rear stamped fender & slim chrome luggage rack */}
+      {/* Stamped body-color rear fender + boxy black/red taillight */}
       <path
-        d="M 104 304 Q 160 226 250 256"
+        d="M 96 312 Q 148 228 248 250"
         fill="none"
         stroke={colorHex}
-        strokeWidth="12"
+        strokeWidth="13"
         strokeLinecap="round"
       />
+      <polygon points="94,252 118,248 116,272 90,268" fill="#18181B" stroke="#18181B" strokeWidth="2" />
+      <rect x="92" y="253" width="8" height="14" rx="1" fill="#DC2626" />
+      {/* Chrome tubular rear luggage rack flush behind seat */}
       <path
-        d="M 110 242 L 218 242 L 200 272 L 130 272"
+        d="M 104 226 L 204 226 M 114 226 L 128 256 L 194 256 L 200 226"
         fill="none"
-        stroke="#D4D4D8"
-        strokeWidth="5"
+        stroke="#E4E4E7"
+        strokeWidth="4.5"
+        strokeLinecap="round"
         strokeLinejoin="round"
       />
-      {/* Rear shocks */}
-      <line x1="172" y1="322" x2="236" y2="238" stroke="#E4E4E7" strokeWidth="7" strokeLinecap="round" />
-      <line x1="180" y1="312" x2="228" y2="248" stroke="#18181B" strokeWidth="9" strokeDasharray="4 4" />
-      {/* Rear triangle stays */}
-      <path d="M 164 336 L 348 332" stroke={colorHex} strokeWidth="12" strokeLinecap="round" />
-      {/* Iconic Puch Maxi stamped step-through backbone tank frame */}
+      {/* Rear swingarm stays */}
+      <path d="M 164 336 L 348 334" stroke={colorHex} strokeWidth="11" strokeLinecap="round" />
+      {/* Black dual coil rear shocks */}
+      <line x1="168" y1="326" x2="228" y2="238" stroke="#27272A" strokeWidth="7" strokeLinecap="round" />
+      <line x1="176" y1="314" x2="220" y2="250" stroke="#18181B" strokeWidth="10" strokeDasharray="4 4" />
+      {/* Iconic Puch Maxi stamped step-through monocoque + diagonal fuel tank */}
       <path
-        d="M 234 242 L 320 278 L 516 172 L 548 158 L 540 198 L 352 332 L 296 318 L 222 254 Z"
+        d="M 218 232 L 294 232 L 320 288 L 404 288 L 534 156 L 552 186 L 424 318 L 284 318 L 214 252 Z"
         fill={colorHex}
         stroke="#18181B"
         strokeWidth="4"
         strokeLinejoin="round"
       />
-      {/* Maxi accent stripe & chrome gas cap */}
-      <path d="M 340 282 L 512 186 L 520 198 L 348 294 Z" fill={accentHex} />
-      <rect x="474" y="164" width="22" height="10" rx="3" fill="#E4E4E7" stroke="#18181B" strokeWidth="2" />
-      {/* Seat post & classic Puch spring saddle */}
-      <line x1="274" y1="224" x2="288" y2="264" stroke="#D4D4D8" strokeWidth="8" strokeLinecap="round" />
+      {/* Signature chrome side trim rail curving along rear tower & lower step-through */}
       <path
-        d="M 222 206 Q 268 192 316 206 L 306 232 L 224 230 Z"
-        fill="#18181B"
-        stroke="#71717A"
-        strokeWidth="3"
+        d="M 224 248 L 284 304 L 408 304"
+        fill="none"
+        stroke="#F4F4F5"
+        strokeWidth="4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
-      {/* Front forks & front fender */}
-      <line x1="546" y1="150" x2="624" y2="336" stroke="#E4E4E7" strokeWidth="10" strokeLinecap="round" />
-      <line x1="552" y1="164" x2="594" y2="262" stroke={colorHex} strokeWidth="14" strokeLinecap="round" />
+      {/* Iconic black PUCH diagonal tank badge & round chrome gas cap */}
+      <path d="M 432 268 L 516 188 L 525 198 L 441 278 Z" fill="#18181B" />
+      <circle cx="514" cy="170" r="8" fill="#E4E4E7" stroke="#18181B" strokeWidth="2.5" />
+      {/* Chunky low-mounted flat-top Puch rectangular buddy saddle (taller rear lip) */}
+      <path
+        d="M 196 196 Q 214 188 232 198 L 326 202 Q 332 212 322 232 L 200 232 Q 190 218 196 196 Z"
+        fill="#18181B"
+        stroke="#52525B"
+        strokeWidth="3"
+        strokeLinejoin="round"
+      />
+      {/* Body-color upper fork tubes + chrome lower sliders */}
+      <line x1="546" y1="150" x2="624" y2="336" stroke="#E4E4E7" strokeWidth="9.5" strokeLinecap="round" />
+      <line x1="548" y1="158" x2="588" y2="254" stroke={colorHex} strokeWidth="14" strokeLinecap="round" />
+      {/* Amber fork reflector */}
+      <rect x="556" y="176" width="12" height="16" rx="2" fill="#F59E0B" stroke="#18181B" strokeWidth="1.5" />
+      {/* Signature contrast BLACK front fender + thin silver stay rod */}
       <path
         d="M 556 276 Q 624 236 686 286"
         fill="none"
-        stroke={colorHex}
-        strokeWidth="10"
+        stroke="#18181B"
+        strokeWidth="12"
         strokeLinecap="round"
       />
-      {/* Swept chrome handlebars & classic round headlight */}
       <path
-        d="M 544 150 L 524 88 L 478 86"
+        d="M 556 276 Q 624 236 686 286"
+        fill="none"
+        stroke="#3F3F46"
+        strokeWidth="4"
+        strokeLinecap="round"
+      />
+      <line x1="572" y1="288" x2="624" y2="336" stroke="#D4D4D8" strokeWidth="3" />
+      {/* High-rise swept chrome handlebars */}
+      <path
+        d="M 544 150 L 520 82 L 474 86"
         fill="none"
         stroke="#E4E4E7"
         strokeWidth="8"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <rect x="462" y="79" width="28" height="13" rx="6" fill="#18181B" stroke="#71717A" strokeWidth="2" />
+      <rect x="458" y="79" width="28" height="13" rx="6" fill="#18181B" stroke="#71717A" strokeWidth="2" />
+      {/* Speedo pod + classic round black headlight bucket with chrome bezel */}
+      <rect x="546" y="128" width="22" height="14" rx="4" fill="#18181B" stroke="#A1A1AA" strokeWidth="2" />
       <circle cx="574" cy="154" r="18" fill="#18181B" stroke="#E4E4E7" strokeWidth="3.5" />
       <path d="M 584 139 A 16 16 0 0 1 584 169 Z" fill="#FEF08A" />
     </g>
@@ -589,23 +669,41 @@ export function MopedWorkbench({
               <circle cx={cx} cy={cy} r="72" fill="#111114" stroke="#27272A" strokeWidth="4" />
               {/* Rim */}
               <circle cx={cx} cy={cy} r="54" fill="none" stroke="#E4E4E7" strokeWidth="6" />
-              {/* Spokes */}
-              {[0, 30, 60, 90, 120, 150].map((deg) => {
-                const rad = (deg * Math.PI) / 180;
-                const dx = Math.cos(rad) * 52;
-                const dy = Math.sin(rad) * 52;
-                return (
-                  <line
-                    key={deg}
-                    x1={cx - dx}
-                    y1={cy - dy}
-                    x2={cx + dx}
-                    y2={cy + dy}
-                    stroke="#71717A"
-                    strokeWidth="2"
-                  />
-                );
-              })}
+              {/* Spokes (cast alloy mag wheels on Tomos A35; wire spokes on Maxi/Hobbit/Derbi) */}
+              {bike.make === "tomos-a35"
+                ? [0, 72, 144, 216, 288].map((deg) => {
+                    const rad = (deg * Math.PI) / 180;
+                    const dx = Math.cos(rad) * 51;
+                    const dy = Math.sin(rad) * 51;
+                    return (
+                      <line
+                        key={deg}
+                        x1={cx}
+                        y1={cy}
+                        x2={cx + dx}
+                        y2={cy + dy}
+                        stroke="#D4D4D8"
+                        strokeWidth="7"
+                        strokeLinecap="round"
+                      />
+                    );
+                  })
+                : [0, 30, 60, 90, 120, 150].map((deg) => {
+                    const rad = (deg * Math.PI) / 180;
+                    const dx = Math.cos(rad) * 52;
+                    const dy = Math.sin(rad) * 52;
+                    return (
+                      <line
+                        key={deg}
+                        x1={cx - dx}
+                        y1={cy - dy}
+                        x2={cx + dx}
+                        y2={cy + dy}
+                        stroke="#71717A"
+                        strokeWidth="2"
+                      />
+                    );
+                  })}
               {/* Hub & Rear Sprocket */}
               {isRear && (
                 <circle
