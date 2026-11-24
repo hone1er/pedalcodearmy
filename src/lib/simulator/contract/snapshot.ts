@@ -1,0 +1,161 @@
+import type {
+  HotspotId,
+  MisfirePattern,
+  PartSlot,
+  PlugColor,
+  RouteId,
+  SimBikeMake,
+  SimPhase,
+  SmokeTint,
+  ToolId,
+  UpgradeId,
+} from "./ids";
+import type {
+  ComicCaption,
+  RideInput,
+  RideSummary,
+  SimSaveState,
+  ToolReading,
+} from "./types";
+
+/**
+ * Observable-only ride telemetry snapshot.
+ * GOLDEN CONTRACT RULE: Contains ZERO FaultIds — UI, Audio, and Renderer
+ * must deduce/visualize everything strictly from real physical symptoms!
+ */
+export interface RideTelemetrySnapshot {
+  active: boolean;
+  routeId: RouteId;
+  routeName: string;
+  timeOfDay: "morning" | "golden" | "sunset" | "night";
+  bikeMake: SimBikeMake;
+  bikeColorHex: string;
+  bikeAccentHex: string;
+  /** Visible part tiers for Canvas 2D renderer */
+  exhaustVisual: "stock" | "performance" | "race";
+  cylinderVisual: "stock" | "performance" | "race";
+
+  // Motion & route
+  distanceM: number;
+  routeLengthM: number;
+  speedMph: number;
+  gradePct: number;
+  landmark: string | null;
+  atStoplight: boolean;
+  stoplightRedSec: number;
+
+  // Controls
+  throttle: number;
+  brake: boolean;
+  tuck: boolean;
+  choke: boolean;
+  clutchPulled: boolean;
+  pedaling: boolean;
+  stamina: number; // 0..100 for LPA & pedaling home
+
+  // Engine telemetry (gated instruments clearly marked)
+  engineRunning: boolean;
+  rpm: number; // Always available to audio synth; UI displays only if hasTach
+  maxRpm: number;
+  hasTach: boolean;
+  hasChtGauge: boolean;
+  hasStethoscope: boolean;
+  listenMode: boolean;
+  chtC: number; // Always available to renderer (heat shimmer); UI shows numeric only if hasChtGauge
+  powerbandActive: boolean; // "On the pipe!"
+  fuelBowlPct: number; // 0..100
+
+  // Observable symptoms (derived from physics, NEVER raw fault IDs)
+  smoke: {
+    density: number; // 0..1
+    tint: SmokeTint;
+  };
+  misfirePattern: MisfirePattern;
+  misfireRate: number; // 0..1
+  leanTone: number; // 0..1 (thin bright exhaust tone)
+  detonationPulse: boolean; // True when ping fires
+  clutchSlip: number; // 0..1
+  pistonKnock: number; // 0..1 (audible in stethoscope Listen Mode)
+  compressionFeel: "strong" | "weak";
+
+  // Failure & survival states
+  stalled: boolean;
+  stallReason: "none" | "fuel" | "spark" | "idle" | "plug-chop";
+  seizeWarning: boolean;
+  seizeActive: boolean;
+  /** Remaining ms in the clutch-save reaction window when seizing (0 if inactive) */
+  seizeClutchWindowMs: number;
+  seizedHard: boolean;
+  pedalingHome: boolean;
+  pedalHomeRemainingM: number;
+
+  // Mission spice
+  coffeeTempPct: number | null; // For Telegraph Coffee Run
+  coffeeSpillPct: number | null;
+  elapsedSec: number;
+  captions: ComicCaption[];
+}
+
+/**
+ * Full store snapshot consumed by React components via useSyncExternalStore.
+ */
+export interface SimAppSnapshot {
+  phase: SimPhase;
+  save: SimSaveState;
+  ride: RideTelemetrySnapshot | null;
+  lastRideSummary: RideSummary | null;
+  selectedTool: ToolId;
+  lastToolReading: ToolReading | null;
+  plugViewerColor: PlugColor | null;
+  lastActionNotice: { text: string; tone: "gold" | "green" | "red" | "cyan" } | null;
+  /** Whether the active bike visibly drips fuel in the garage (symptom, not fault ID) */
+  garageFuelDrip: boolean;
+  /** Whether the active bike currently has an unresolved mechanical issue (generic indicator only) */
+  bikeNeedsAttention: boolean;
+  /** Ideal jet hint range for UI slider bounds */
+  jetRange: { min: number; max: number };
+}
+
+/**
+ * Action contract exposed by `src/lib/simulator/store/sim-store.ts`.
+ * Property arrow signatures allow safe destructuring from `useSimStore()`.
+ */
+export interface SimStoreActions {
+  setPhase: (this: void, phase: SimPhase) => void;
+  selectBike: (this: void, bikeId: string) => void;
+  selectTool: (this: void, tool: ToolId) => void;
+  runToolOnHotspot: (this: void, hotspot: HotspotId) => ToolReading | null;
+  closePlugViewer: (this: void) => void;
+  clearNotice: (this: void) => void;
+
+  // Garage wrenching & tuning
+  installPart: (this: void, partId: string) => boolean;
+  setMainJet: (this: void, size: number) => void;
+  setNeedleClip: (this: void, clip: 1 | 2 | 3 | 4 | 5) => void;
+  setIdleScrew: (this: void, turns: number) => void;
+  toggleKillSwitch: (this: void) => void;
+  addPremixOil: (this: void) => void;
+  cleanAirFilter: (this: void) => void;
+  cleanCarburetor: (this: void) => void;
+  clearFaultlessTestCheck: (this: void) => void;
+
+  // Economy
+  buyPart: (this: void, partId: string) => boolean;
+  buyUpgrade: (this: void, upgradeId: UpgradeId) => boolean;
+  buyCraigslistBike: (this: void, listingId: string) => boolean;
+
+  // Ride lifecycle
+  startRide: (this: void, routeId: RouteId) => void;
+  setRideInput: (this: void, partial: Partial<RideInput>) => void;
+  toggleListenMode: (this: void) => void;
+  triggerPedalPulse: (this: void) => void;
+  triggerKickstart: (this: void) => void;
+  startPedalingHome: (this: void) => void;
+  callTowTruck: (this: void) => void;
+  abortRideToGarage: (this: void) => void;
+  dismissRideSummary: (this: void) => void;
+
+  // Save management
+  resetSave: (this: void) => void;
+  getInstalledSlotPartId: (this: void, slot: PartSlot) => string | undefined;
+}

@@ -20,7 +20,9 @@ const ROUTES: Array<{
   { path: "/shop/side-covers", changeFrequency: "weekly", priority: 0.8 },
   { path: "/stable", changeFrequency: "monthly", priority: 0.8 },
   { path: "/members", changeFrequency: "monthly", priority: 0.6 },
-  { path: "/game", changeFrequency: "monthly", priority: 0.6 },
+  { path: "/game", changeFrequency: "monthly", priority: 0.7 },
+  { path: "/game/ran-when-parked", changeFrequency: "monthly", priority: 0.7 },
+  { path: "/game/east-bay-runner", changeFrequency: "monthly", priority: 0.7 },
   { path: "/privacy", changeFrequency: "yearly", priority: 0.3 },
 ];
 
