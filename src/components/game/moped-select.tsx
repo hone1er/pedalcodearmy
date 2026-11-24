@@ -54,7 +54,7 @@ export function MopedSelect({ onSelect }: MopedSelectProps) {
     <div className="flex flex-col items-center gap-6 px-4">
       <h2
         className="text-2xl text-[#FFD700] md:text-3xl"
-        style={{ fontFamily: "Russo One, sans-serif" }}
+        style={{ fontFamily: "var(--font-russo-one), 'Russo One', sans-serif" }}
       >
         CHOOSE YOUR RIDE
       </h2>
@@ -67,7 +67,7 @@ export function MopedSelect({ onSelect }: MopedSelectProps) {
             <button
               key={make}
               onClick={() => onSelect(make)}
-              className="group flex flex-col items-center gap-3 rounded-lg border-4 border-gray-700 bg-black/80 p-5 text-left transition-all hover:border-[#FFD700] hover:shadow-[0_0_20px_rgba(255,215,0,0.3)]"
+              className="group flex flex-col items-center gap-3 rounded-lg border-4 border-gray-700 bg-black/80 p-5 text-left transition-all hover:border-[#FFD700] hover:shadow-[0_0_20px_rgba(255,215,0,0.3)] focus-visible:border-[#FFD700] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
             >
               {/* Color swatch */}
               <div className="flex items-center gap-2">
@@ -84,7 +84,7 @@ export function MopedSelect({ onSelect }: MopedSelectProps) {
               <div className="text-center">
                 <h3
                   className="text-xl text-white group-hover:text-[#FFD700]"
-                  style={{ fontFamily: "Russo One, sans-serif" }}
+                  style={{ fontFamily: "var(--font-russo-one), 'Russo One', sans-serif" }}
                 >
                   {info.name}
                 </h3>
