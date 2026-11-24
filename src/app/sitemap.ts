@@ -19,8 +19,6 @@ const ROUTES: Array<{
   { path: "/shop", changeFrequency: "weekly", priority: 0.9 },
   { path: "/shop/side-covers", changeFrequency: "weekly", priority: 0.8 },
   { path: "/stable", changeFrequency: "monthly", priority: 0.8 },
-  { path: "/build-calculator", changeFrequency: "monthly", priority: 0.7 },
-  { path: "/troubleshooter", changeFrequency: "monthly", priority: 0.7 },
   { path: "/members", changeFrequency: "monthly", priority: 0.6 },
   { path: "/game", changeFrequency: "monthly", priority: 0.6 },
   { path: "/privacy", changeFrequency: "yearly", priority: 0.3 },

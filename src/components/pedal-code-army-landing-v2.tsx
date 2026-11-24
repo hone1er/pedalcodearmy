@@ -7,7 +7,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { mopeds } from "@/data/mopeds";
 import {
   Bike,
-  Calculator,
   Calendar,
   Check,
   ChevronDown,
@@ -57,22 +56,6 @@ export default function PedalCodeArmyLanding() {
       description:
         "Custom 3D-printed moped parts, personalized side covers, brackets, and gang gear built by riders for riders.",
       cta: "Shop Parts",
-    },
-    {
-      href: "/build-calculator",
-      icon: Calculator,
-      title: "Build Calculator",
-      description:
-        "Plan your next Puch, Honda, Derbi, or Tomos build with tiered parts lists, speed targets, and cost estimates.",
-      cta: "Plan a Build",
-    },
-    {
-      href: "/troubleshooter",
-      icon: Wrench,
-      title: "Troubleshooter",
-      description:
-        "Moped won't start or bogging at wide-open throttle? Walk through our step-by-step two-stroke diagnostic guide.",
-      cta: "Diagnose Bike",
     },
     {
       href: "/game",
@@ -221,7 +204,7 @@ export default function PedalCodeArmyLanding() {
               Everything you need to ride, wrench, build, and represent the crew.
             </p>
           </div>
-          <div className="mx-auto grid max-w-6xl gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mx-auto grid max-w-6xl gap-6 sm:grid-cols-2 lg:grid-cols-4">
             {communityFeatures.map((feature) => (
               <Link
                 key={feature.href}

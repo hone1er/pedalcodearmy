@@ -9,8 +9,6 @@ import { useCart } from "@/components/cart-context";
 
 const NAV_LINKS = [
   { href: "/stable", label: "The Stable" },
-  { href: "/build-calculator", label: "Build Calc" },
-  { href: "/troubleshooter", label: "Troubleshooter" },
   { href: "/shop", label: "Shop" },
   { href: "/members", label: "The Dudes" },
   { href: "/game", label: "City Runner" },
@@ -84,7 +82,7 @@ export function SiteHeader() {
             </span>
           </Link>
 
-          <nav aria-label="Primary navigation" className="hidden xl:block">
+          <nav aria-label="Primary navigation" className="hidden lg:block">
             <ul className="flex items-center gap-1">
               {NAV_LINKS.map((link) => {
                 const active = isActiveRoute(link.href);
@@ -131,7 +129,7 @@ export function SiteHeader() {
                   ? "Close navigation menu"
                   : "Open navigation menu"
               }
-              className="flex items-center justify-center border-2 border-[#FFD700] bg-black p-1.5 text-[#FFD700] transition-colors hover:bg-[#FFD700] hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] xl:hidden"
+              className="flex items-center justify-center border-2 border-[#FFD700] bg-black p-1.5 text-[#FFD700] transition-colors hover:bg-[#FFD700] hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] lg:hidden"
             >
               {mobileMenuOpen ? (
                 <X className="h-5 w-5" aria-hidden="true" />
@@ -146,7 +144,7 @@ export function SiteHeader() {
           <nav
             id="mobile-nav-menu"
             aria-label="Mobile navigation"
-            className="border-t-2 border-[#FFD700]/40 bg-black px-4 pb-4 pt-3 xl:hidden"
+            className="border-t-2 border-[#FFD700]/40 bg-black px-4 pb-4 pt-3 lg:hidden"
           >
             <ul className="grid gap-2 sm:grid-cols-2">
               {NAV_LINKS.map((link) => {

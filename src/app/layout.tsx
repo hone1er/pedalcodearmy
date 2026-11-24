@@ -30,8 +30,6 @@ export const metadata: Metadata = {
 
 const FOOTER_LINKS = [
   { href: "/stable", label: "The Stable" },
-  { href: "/build-calculator", label: "Build Calculator" },
-  { href: "/troubleshooter", label: "Troubleshooter" },
   { href: "/shop", label: "Shop" },
   { href: "/members", label: "The Dudes" },
   { href: "/game", label: "City Runner" },
