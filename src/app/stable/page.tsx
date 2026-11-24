@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import FleetGallery from "@/components/fleet-gallery";
+import { mopeds } from "@/data/mopeds";
+
+const fleetCount = mopeds.length;
 
 export const metadata: Metadata = {
   title: "The Stable",
-  description:
-    "Browse the complete Pedal Code Army fleet - 27+ mopeds across all members. Filter by make, owner, and explore detailed build specs. Puch, Honda, Derbi, Tomos, and more.",
+  description: `Browse the complete Pedal Code Army fleet - ${fleetCount} mopeds across all members. Filter by make, owner, and explore detailed build specs. Puch, Honda, Derbi, Tomos, and more.`,
   keywords: [
     "moped collection",
     "moped gallery",
@@ -18,8 +20,7 @@ export const metadata: Metadata = {
   ],
   openGraph: {
     title: "The Stable | Pedal Code Army",
-    description:
-      "Browse the complete Pedal Code Army fleet - 27+ mopeds with detailed build specs.",
+    description: `Browse the complete Pedal Code Army fleet - ${fleetCount} mopeds with detailed build specs.`,
     type: "website",
   },
 };
@@ -38,7 +39,10 @@ function RetroStripe() {
 
 export default function StablePage() {
   return (
-    <main className="min-h-screen bg-gradient-to-b from-[#FFD700] to-[#15162c]">
+    <main
+      id="main-content"
+      className="min-h-screen bg-gradient-to-b from-[#FFD700] to-[#15162c] text-black"
+    >
       {/* Hero Section */}
       <section className="relative overflow-hidden bg-black py-16 text-[#FFD700]">
         <div className="container mx-auto px-4 text-center">
@@ -47,8 +51,8 @@ export default function StablePage() {
           </h1>
           <RetroStripe />
           <p className="mx-auto mt-4 max-w-2xl text-xl text-white/80">
-            Every moped in the Pedal Code Army fleet. Browse builds, compare
-            specs, and get inspired for your next project.
+            All {fleetCount} mopeds in the Pedal Code Army fleet. Browse builds,
+            compare specs, and get inspired for your next project.
           </p>
         </div>
 
@@ -68,7 +72,7 @@ export default function StablePage() {
           <h2 className="mb-4 text-3xl font-black uppercase">
             Got a Moped to Add?
           </h2>
-          <p className="mb-8 text-white/70">
+          <p className="mb-8 text-white/80">
             Want to see your moped in The Stable? Hit us up on Instagram!
           </p>
           <a

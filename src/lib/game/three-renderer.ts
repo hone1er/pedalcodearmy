@@ -5,6 +5,7 @@ import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPa
 import type { RenderState, MopedMake, GameEntity } from "./types";
 import {
   PLAYER_X_POSITION,
+  VIRTUAL_WIDTH,
 } from "./types";
 
 // ── QUALITY TIERS ─────────────────────────────────────────────────────────
@@ -138,21 +139,25 @@ function laneToZ(lane: number): number {
   return LANE_POSITIONS[lane] ?? 0;
 }
 
-function entityToWorldX(entityX: number, canvasWidth: number): number {
-  const playerScreenX = canvasWidth * PLAYER_X_POSITION;
-  return (entityX - playerScreenX) * WORLD_SCALE;
+function entityToWorldX(entityX: number): number {
+  const playerVirtualX = VIRTUAL_WIDTH * PLAYER_X_POSITION;
+  return (entityX - playerVirtualX) * WORLD_SCALE;
 }
 
 function disposeMeshObj(obj: THREE.Object3D): void {
   if (!("geometry" in obj)) return;
   const mesh = obj as THREE.Mesh<THREE.BufferGeometry, THREE.Material | THREE.Material[]>;
-  mesh.geometry.dispose();
+  if (mesh.geometry && !mesh.geometry.userData?.shared) {
+    mesh.geometry.dispose();
+  }
   const mat = mesh.material;
   if (Array.isArray(mat)) {
     for (const m of mat) {
-      m.dispose();
+      if (m && !m.userData?.shared) {
+        m.dispose();
+      }
     }
-  } else {
+  } else if (mat && !mat.userData?.shared) {
     mat.dispose();
   }
 }
@@ -162,36 +167,49 @@ function seg(base: number, detail: number): number {
   return Math.max(3, Math.round(base * detail));
 }
 
-/** Detect GPU tier by running a quick benchmark draw */
-function detectTier(renderer: THREE.WebGLRenderer): QualityTier {
-  // Check for mobile / low-end signals first
-  const gl = renderer.getContext();
-  const debugInfo = gl.getExtension("WEBGL_debug_renderer_info");
-  if (debugInfo) {
-    const gpuRenderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) as string;
-    const lower = gpuRenderer.toLowerCase();
-    // Known low-end / integrated GPUs
-    if (
-      lower.includes("mali") ||
-      lower.includes("adreno 3") ||
-      lower.includes("adreno 4") ||
-      lower.includes("powervr") ||
-      lower.includes("intel hd") ||
-      lower.includes("intel uhd") ||
-      lower.includes("swiftshader") ||
-      lower.includes("llvmpipe")
-    ) {
-      return "low";
+/** Detect GPU tier without constructing a full WebGLRenderer */
+function detectTier(): QualityTier {
+  try {
+    const probeCanvas = document.createElement("canvas");
+    const gl =
+      probeCanvas.getContext("webgl2") ??
+      probeCanvas.getContext("webgl");
+    if (gl) {
+      const debugInfo = gl.getExtension("WEBGL_debug_renderer_info");
+      if (debugInfo) {
+        const gpuRenderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) as string | null;
+        if (gpuRenderer) {
+          const lower = gpuRenderer.toLowerCase();
+          // Known low-end / integrated GPUs
+          if (
+            lower.includes("mali") ||
+            lower.includes("adreno 3") ||
+            lower.includes("adreno 4") ||
+            lower.includes("powervr") ||
+            lower.includes("intel hd") ||
+            lower.includes("intel uhd") ||
+            lower.includes("swiftshader") ||
+            lower.includes("llvmpipe")
+          ) {
+            gl.getExtension("WEBGL_lose_context")?.loseContext();
+            return "low";
+          }
+          // Mid-range mobile
+          if (
+            lower.includes("adreno 5") ||
+            lower.includes("adreno 6") ||
+            lower.includes("apple gpu") ||
+            lower.includes("intel iris")
+          ) {
+            gl.getExtension("WEBGL_lose_context")?.loseContext();
+            return "medium";
+          }
+        }
+      }
+      gl.getExtension("WEBGL_lose_context")?.loseContext();
     }
-    // Mid-range mobile
-    if (
-      lower.includes("adreno 5") ||
-      lower.includes("adreno 6") ||
-      lower.includes("apple gpu") ||
-      lower.includes("intel iris")
-    ) {
-      return "medium";
-    }
+  } catch {
+    // Fall through to UA / viewport heuristics
   }
 
   // Mobile UA heuristic
@@ -207,48 +225,21 @@ function detectTier(renderer: THREE.WebGLRenderer): QualityTier {
   return "high";
 }
 
+function getEffectiveFrustum(aspect: number): number {
+  const baseFrustum = 8;
+  // Keep at least 11 world units half-width on narrow screens so reaction distance matches desktop
+  return Math.max(baseFrustum, 11 / Math.max(aspect, 0.5));
+}
+
 const _tmpMatrix = new THREE.Matrix4();
 const _tmpColor = new THREE.Color();
 const _tmpVec = new THREE.Vector3();
 
-// ── SHARED GEOMETRY & MATERIAL CACHES ─────────────────────────────────────
-// Created once on first use, reused for every entity of that type.
-
-let _sharedGeoCache: Map<string, THREE.BufferGeometry> | null = null;
-let _sharedMatCache: Map<string, THREE.Material> | null = null;
-
-function getGeoCache(): Map<string, THREE.BufferGeometry> {
-  _sharedGeoCache ??= new Map();
-  return _sharedGeoCache;
-}
-function getMatCache(): Map<string, THREE.Material> {
-  _sharedMatCache ??= new Map();
-  return _sharedMatCache;
-}
-
-function cachedGeo(key: string, factory: () => THREE.BufferGeometry): THREE.BufferGeometry {
-  const cache = getGeoCache();
-  let g = cache.get(key);
-  if (!g) {
-    g = factory();
-    cache.set(key, g);
-  }
-  return g;
-}
-
-function cachedMat(key: string, factory: () => THREE.Material): THREE.Material {
-  const cache = getMatCache();
-  let m = cache.get(key);
-  if (!m) {
-    m = factory();
-    cache.set(key, m);
-  }
-  return m;
-}
-
 // ── THREE RENDERER CLASS ──────────────────────────────────────────────────
 
 export class ThreeRenderer {
+  private sharedGeoCache = new Map<string, THREE.BufferGeometry>();
+  private sharedMatCache = new Map<string, THREE.Material>();
   private webglRenderer!: THREE.WebGLRenderer;
   private scene!: THREE.Scene;
   private camera!: THREE.OrthographicCamera;
@@ -292,6 +283,7 @@ export class ThreeRenderer {
   private curbBottom!: THREE.Mesh;
   private laneDashInstanced!: THREE.InstancedMesh;
   private laneDashCount = 40;
+  private lastRoadScrollOffset = -1;
 
   // Entities pool
   private entityMeshes = new Map<number, THREE.Group>();
@@ -329,32 +321,41 @@ export class ThreeRenderer {
     this.parentEl = parentEl;
   }
 
+  private cachedGeo(key: string, factory: () => THREE.BufferGeometry): THREE.BufferGeometry {
+    let g = this.sharedGeoCache.get(key);
+    if (!g) {
+      g = factory();
+      g.userData.shared = true;
+      this.sharedGeoCache.set(key, g);
+    }
+    return g;
+  }
+
+  private cachedMat(key: string, factory: () => THREE.Material): THREE.Material {
+    let m = this.sharedMatCache.get(key);
+    if (!m) {
+      m = factory();
+      m.userData.shared = true;
+      this.sharedMatCache.set(key, m);
+    }
+    return m;
+  }
+
   async init(): Promise<void> {
     if (this.initialized) return;
 
     const rect = this.parentEl.getBoundingClientRect();
-    const w = rect.width;
-    const h = rect.height;
+    const w = Math.max(rect.width, 1);
+    const h = Math.max(rect.height, 1);
 
-    // Create renderer first to detect GPU tier
+    this.tier = detectTier();
+    this.q = QUALITY[this.tier];
+
     this.webglRenderer = new THREE.WebGLRenderer({
-      antialias: false, // will set after tier detection
+      antialias: this.q.antialias,
       alpha: false,
       powerPreference: "high-performance",
     });
-
-    this.tier = detectTier(this.webglRenderer);
-    this.q = QUALITY[this.tier];
-
-    // Re-create with correct antialias if needed (cheap at init time)
-    if (this.q.antialias) {
-      this.webglRenderer.dispose();
-      this.webglRenderer = new THREE.WebGLRenderer({
-        antialias: true,
-        alpha: false,
-        powerPreference: "high-performance",
-      });
-    }
 
     this.webglRenderer.setSize(w, h);
     this.webglRenderer.setPixelRatio(Math.min(window.devicePixelRatio, this.q.pixelRatioCap));
@@ -378,7 +379,7 @@ export class ThreeRenderer {
 
     // Camera — ortho angled 2.5D
     const aspect = w / h;
-    const frustum = 8;
+    const frustum = getEffectiveFrustum(aspect);
     this.camera = new THREE.OrthographicCamera(
       -frustum * aspect, frustum * aspect,
       frustum, -frustum,
@@ -641,6 +642,9 @@ export class ThreeRenderer {
     while (this.mopedGroup.children.length > 0) {
       const child = this.mopedGroup.children[0]!;
       this.mopedGroup.remove(child);
+      child.traverse((obj) => {
+        disposeMeshObj(obj);
+      });
     }
 
     const colors = MOPED_COLORS[make];
@@ -792,8 +796,8 @@ export class ThreeRenderer {
     this.exhaustInstanced = new THREE.InstancedMesh(sphereGeo, exhaustMat, this.q.maxExhaust);
     this.exhaustInstanced.castShadow = false;
     this.exhaustInstanced.frustumCulled = false;
+    this.exhaustInstanced.count = 0;
     this.particleGroup.add(this.exhaustInstanced);
-    this.hideAllInstances(this.exhaustInstanced, this.q.maxExhaust);
 
     // Sparkles — Basic with emissive-like color (bloom picks up MeshBasicMaterial too)
     const starGeo = new THREE.OctahedronGeometry(0.06, 0);
@@ -803,8 +807,8 @@ export class ThreeRenderer {
     this.sparkleInstanced = new THREE.InstancedMesh(starGeo, sparkleMat, this.q.maxSparkles);
     this.sparkleInstanced.castShadow = false;
     this.sparkleInstanced.frustumCulled = false;
+    this.sparkleInstanced.count = 0;
     this.particleGroup.add(this.sparkleInstanced);
-    this.hideAllInstances(this.sparkleInstanced, this.q.maxSparkles);
 
     // Speed lines — Basic
     const lineGeo = new THREE.BoxGeometry(1, 0.01, 0.01);
@@ -814,17 +818,8 @@ export class ThreeRenderer {
     this.speedLineInstanced = new THREE.InstancedMesh(lineGeo, lineMat, this.q.maxSpeedLines);
     this.speedLineInstanced.castShadow = false;
     this.speedLineInstanced.frustumCulled = false;
+    this.speedLineInstanced.count = 0;
     this.particleGroup.add(this.speedLineInstanced);
-    this.hideAllInstances(this.speedLineInstanced, this.q.maxSpeedLines);
-  }
-
-  private hideAllInstances(mesh: THREE.InstancedMesh, count: number): void {
-    _tmpMatrix.makeScale(0, 0, 0);
-    _tmpMatrix.setPosition(0, -100, 0);
-    for (let i = 0; i < count; i++) {
-      mesh.setMatrixAt(i, _tmpMatrix);
-    }
-    mesh.instanceMatrix.needsUpdate = true;
   }
 
   // ── HIT FLASH ───────────────────────────────────────────────────────────
@@ -847,11 +842,13 @@ export class ThreeRenderer {
 
   resize(w: number, h: number): void {
     if (!this.initialized) return;
-    this.webglRenderer.setSize(w, h);
-    if (this.composer) this.composer.setSize(w, h);
+    const safeW = Math.max(w, 1);
+    const safeH = Math.max(h, 1);
+    this.webglRenderer.setSize(safeW, safeH);
+    if (this.composer) this.composer.setSize(safeW, safeH);
 
-    const aspect = w / h;
-    const frustum = 8;
+    const aspect = safeW / safeH;
+    const frustum = getEffectiveFrustum(aspect);
     this.camera.left = -frustum * aspect;
     this.camera.right = frustum * aspect;
     this.camera.top = frustum;
@@ -859,17 +856,18 @@ export class ThreeRenderer {
     this.camera.updateProjectionMatrix();
 
     if (this.bloomPass) {
-      const bw = Math.round(w * this.q.bloomResScale);
-      const bh = Math.round(h * this.q.bloomResScale);
+      const bw = Math.round(safeW * this.q.bloomResScale);
+      const bh = Math.round(safeH * this.q.bloomResScale);
       this.bloomPass.resolution.set(bw, bh);
     }
   }
 
   render(state: RenderState, dt: number): void {
     if (!this.initialized) return;
-    this.frameCount++;
-
-    const w = state.canvasWidth;
+    const isPaused = Boolean(state.paused);
+    if (!isPaused) {
+      this.frameCount++;
+    }
 
     // Rebuild moped if make changed
     if (this.currentMake !== state.moped) {
@@ -877,7 +875,9 @@ export class ThreeRenderer {
     }
 
     // Camera shake
-    this.updateShake(state);
+    if (!isPaused) {
+      this.updateShake(state);
+    }
     this.camera.position.set(
       this.baseCameraPos.x + this.shakeOffset.x * 0.02,
       this.baseCameraPos.y + this.shakeOffset.y * 0.02,
@@ -885,14 +885,18 @@ export class ThreeRenderer {
     );
 
     // Update scene elements
-    this.updateClouds(dt);
+    if (!isPaused) {
+      this.updateClouds(dt);
+    }
     this.updateBuildings(state);
     this.updateRoad(state);
-    this.updateEntities(state, w);
+    this.updateEntities(state, dt);
     this.updateMoped(state);
-    this.updateParticles(state, dt);
-    this.updateSparkles(dt);
-    this.updateSpeedLines(state, dt);
+    if (!isPaused) {
+      this.updateParticles(state, dt);
+      this.updateSparkles(dt);
+      this.updateSpeedLines(state, dt);
+    }
     this.updateHitFlash(state);
 
     if (this.bloomPass) {
@@ -914,6 +918,7 @@ export class ThreeRenderer {
     this.shakeOffset = { x: 0, y: 0 };
     this.frameCount = 0;
     this.lastBuildingScroll = -1;
+    this.lastRoadScrollOffset = -1;
 
     // Return entity meshes to pool
     for (const [, group] of this.entityMeshes) {
@@ -923,9 +928,9 @@ export class ThreeRenderer {
     this.entityMeshes.clear();
 
     // Reset particle instances
-    this.hideAllInstances(this.exhaustInstanced, this.q.maxExhaust);
-    this.hideAllInstances(this.sparkleInstanced, this.q.maxSparkles);
-    this.hideAllInstances(this.speedLineInstanced, this.q.maxSpeedLines);
+    this.exhaustInstanced.count = 0;
+    this.sparkleInstanced.count = 0;
+    this.speedLineInstanced.count = 0;
 
     for (const data of this.cloudData) {
       data.x = (Math.random() - 0.5) * 40;
@@ -938,6 +943,7 @@ export class ThreeRenderer {
     this.reset();
     if (this.composer) this.composer.dispose();
     this.webglRenderer.dispose();
+    this.webglRenderer.forceContextLoss();
     this.scene.traverse((obj) => {
       disposeMeshObj(obj);
     });
@@ -947,6 +953,16 @@ export class ThreeRenderer {
       group.traverse((obj) => { disposeMeshObj(obj); });
     }
     this.entityPool = [];
+
+    // Dispose instance-scoped shared geometry and material caches
+    for (const geo of this.sharedGeoCache.values()) {
+      geo.dispose();
+    }
+    this.sharedGeoCache.clear();
+    for (const mat of this.sharedMatCache.values()) {
+      mat.dispose();
+    }
+    this.sharedMatCache.clear();
 
     if (this.webglRenderer.domElement.parentElement) {
       this.webglRenderer.domElement.parentElement.removeChild(this.webglRenderer.domElement);
@@ -1061,6 +1077,11 @@ export class ThreeRenderer {
 
   private updateRoad(state: RenderState): void {
     const scrollOffset = (state.distance * WORLD_SCALE) % 3;
+    if (scrollOffset === this.lastRoadScrollOffset) {
+      return;
+    }
+    this.lastRoadScrollOffset = scrollOffset;
+
     let dashIdx = 0;
     for (let laneDiv = 1; laneDiv <= 2; laneDiv++) {
       const z = LANE_POSITIONS[laneDiv - 1]! + (LANE_POSITIONS[laneDiv]! - LANE_POSITIONS[laneDiv - 1]!) / 2;
@@ -1073,24 +1094,21 @@ export class ThreeRenderer {
         dashIdx++;
       }
     }
-    for (; dashIdx < this.laneDashCount; dashIdx++) {
-      _tmpMatrix.makeScale(0, 0, 0);
-      _tmpMatrix.setPosition(0, -100, 0);
-      this.laneDashInstanced.setMatrixAt(dashIdx, _tmpMatrix);
-    }
+    this.laneDashInstanced.count = dashIdx;
     this.laneDashInstanced.instanceMatrix.needsUpdate = true;
   }
 
-  private updateEntities(state: RenderState, w: number): void {
+  private updateEntities(state: RenderState, dt: number): void {
     const activeIds = new Set<number>();
+    const isPaused = Boolean(state.paused);
 
     for (const entity of state.entities) {
       if (!entity.active || entity.collected) continue;
-      if (entity.x > w + 50 || entity.x + entity.width < -50) continue;
+      if (entity.x > VIRTUAL_WIDTH + 50 || entity.x + entity.width < -50) continue;
 
       activeIds.add(entity.id);
-      const worldX = entityToWorldX(entity.x + entity.width / 2, w);
-      const worldZ = laneToZ(entity.lane);
+      const worldX = entityToWorldX(entity.x + entity.width / 2);
+      const targetZ = laneToZ(entity.lane);
 
       let group = this.entityMeshes.get(entity.id);
       if (!group) {
@@ -1098,9 +1116,19 @@ export class ThreeRenderer {
         this.buildEntityMesh(group, entity);
         this.entityMeshes.set(entity.id, group);
         this.entityGroup.add(group);
+        group.position.set(worldX, 0, targetZ);
+      } else {
+        group.position.x = worldX;
+        group.position.y = 0;
+        if (!isPaused) {
+          const lerpAlpha = 1 - Math.exp(-12 * dt);
+          group.position.z += (targetZ - group.position.z) * lerpAlpha;
+          if (Math.abs(targetZ - group.position.z) < 0.001) {
+            group.position.z = targetZ;
+          }
+        }
       }
 
-      group.position.set(worldX, 0, worldZ);
       group.visible = true;
 
       // Animate collectibles (spin + float)
@@ -1115,7 +1143,7 @@ export class ThreeRenderer {
       }
 
       // Oil slick shimmer
-      if (entity.type === "obstacle" && entity.subType === "oil-slick") {
+      if (!isPaused && entity.type === "obstacle" && entity.subType === "oil-slick") {
         const mesh = group.children[0] as THREE.Mesh | undefined;
         if (mesh && mesh.material instanceof THREE.MeshStandardMaterial) {
           const hue = (this.frameCount * 0.01 + entity.id) % 1;
@@ -1160,7 +1188,7 @@ export class ThreeRenderer {
         const bodyD = entity.height * WORLD_SCALE;
 
         // Car body — Lambert (many cars on screen)
-        const bodyGeo = cachedGeo("car-body", () => new THREE.BoxGeometry(1, 1, 1));
+        const bodyGeo = this.cachedGeo("car-body", () => new THREE.BoxGeometry(1, 1, 1));
         const bodyMat = new THREE.MeshLambertMaterial({ color: palette.body });
         const body = new THREE.Mesh(bodyGeo, bodyMat);
         body.scale.set(bodyW, bodyH, bodyD);
@@ -1170,7 +1198,7 @@ export class ThreeRenderer {
         group.add(body);
 
         // Roof
-        const roofGeo = cachedGeo("car-roof", () => new THREE.BoxGeometry(1, 1, 1));
+        const roofGeo = this.cachedGeo("car-roof", () => new THREE.BoxGeometry(1, 1, 1));
         const roofMat = new THREE.MeshLambertMaterial({ color: palette.roof });
         const roof = new THREE.Mesh(roofGeo, roofMat);
         roof.scale.set(bodyW * 0.4, 0.25, bodyD * 0.8);
@@ -1179,8 +1207,8 @@ export class ThreeRenderer {
         group.add(roof);
 
         // Headlights — emissive BasicMaterial (cheapest)
-        const hlGeo = cachedGeo("car-hl", () => new THREE.SphereGeometry(0.06, seg(4, d), seg(4, d)));
-        const hlMat = new THREE.MeshBasicMaterial({ color: 0xfde68a });
+        const hlGeo = this.cachedGeo("car-hl", () => new THREE.SphereGeometry(0.06, seg(4, d), seg(4, d)));
+        const hlMat = this.cachedMat("car-hl-mat", () => new THREE.MeshBasicMaterial({ color: 0xfde68a }));
         const hl1 = new THREE.Mesh(hlGeo, hlMat);
         hl1.position.set(bodyW / 2, bodyH / 2 + 0.1, bodyD * 0.3);
         group.add(hl1);
@@ -1189,8 +1217,8 @@ export class ThreeRenderer {
         group.add(hl2);
 
         // Taillights
-        const tlGeo = cachedGeo("car-tl", () => new THREE.SphereGeometry(0.05, seg(4, d), seg(4, d)));
-        const tlMat = new THREE.MeshBasicMaterial({ color: 0xef4444 });
+        const tlGeo = this.cachedGeo("car-tl", () => new THREE.SphereGeometry(0.05, seg(4, d), seg(4, d)));
+        const tlMat = this.cachedMat("car-tl-mat", () => new THREE.MeshBasicMaterial({ color: 0xef4444 }));
         const tl1 = new THREE.Mesh(tlGeo, tlMat);
         tl1.position.set(-bodyW / 2, bodyH / 2 + 0.1, bodyD * 0.3);
         group.add(tl1);
@@ -1199,12 +1227,12 @@ export class ThreeRenderer {
         group.add(tl2);
 
         // Wheels
-        const wGeo = cachedGeo("car-wheel", () => {
+        const wGeo = this.cachedGeo("car-wheel", () => {
           const g = new THREE.CylinderGeometry(0.12, 0.12, 1, seg(6, d));
           g.rotateX(Math.PI / 2);
           return g;
         });
-        const wMat = cachedMat("car-wheel-mat", () => new THREE.MeshLambertMaterial({ color: 0x1a1a1a })) as THREE.MeshLambertMaterial;
+        const wMat = this.cachedMat("car-wheel-mat", () => new THREE.MeshLambertMaterial({ color: 0x1a1a1a })) as THREE.MeshLambertMaterial;
         const fw = new THREE.Mesh(wGeo, wMat);
         fw.scale.set(1, 1, bodyD + 0.1);
         fw.position.set(bodyW * 0.35, 0.1, 0);
@@ -1217,10 +1245,10 @@ export class ThreeRenderer {
       }
 
       case "pothole": {
-        const geo = cachedGeo("pothole", () =>
+        const geo = this.cachedGeo("pothole", () =>
           new THREE.CylinderGeometry(0.5, 0.4, 0.1, seg(8, d)),
         );
-        const mat = cachedMat("pothole-mat", () =>
+        const mat = this.cachedMat("pothole-mat", () =>
           new THREE.MeshLambertMaterial({ color: 0x0a0a0a }),
         ) as THREE.MeshLambertMaterial;
         const mesh = new THREE.Mesh(geo, mat);
@@ -1232,7 +1260,7 @@ export class ThreeRenderer {
       }
 
       case "oil-slick": {
-        const geo = cachedGeo("oil", () =>
+        const geo = this.cachedGeo("oil", () =>
           new THREE.CylinderGeometry(0.5, 0.5, 0.02, seg(10, d)),
         );
         const mat = new THREE.MeshStandardMaterial({
@@ -1249,8 +1277,8 @@ export class ThreeRenderer {
       case "traffic-cone": {
         const coneH = entity.height * WORLD_SCALE;
         const coneR = entity.width * WORLD_SCALE / 2;
-        const geo = cachedGeo("cone", () => new THREE.ConeGeometry(1, 1, seg(6, d)));
-        const mat = cachedMat("cone-mat", () =>
+        const geo = this.cachedGeo("cone", () => new THREE.ConeGeometry(1, 1, seg(6, d)));
+        const mat = this.cachedMat("cone-mat", () =>
           new THREE.MeshLambertMaterial({ color: 0xf97316 }),
         ) as THREE.MeshLambertMaterial;
         const mesh = new THREE.Mesh(geo, mat);
@@ -1260,8 +1288,8 @@ export class ThreeRenderer {
         group.add(mesh);
 
         // Base
-        const baseGeo = cachedGeo("cone-base", () => new THREE.BoxGeometry(1, 0.05, 1));
-        const baseMat = cachedMat("cone-base-mat", () =>
+        const baseGeo = this.cachedGeo("cone-base", () => new THREE.BoxGeometry(1, 0.05, 1));
+        const baseMat = this.cachedMat("cone-base-mat", () =>
           new THREE.MeshLambertMaterial({ color: 0x333333 }),
         ) as THREE.MeshLambertMaterial;
         const base = new THREE.Mesh(baseGeo, baseMat);
@@ -1273,8 +1301,8 @@ export class ThreeRenderer {
       }
 
       case "dog": {
-        const bodyGeo = cachedGeo("dog-body", () => new THREE.BoxGeometry(0.6, 0.25, 0.3));
-        const bodyMat = cachedMat("dog-body-mat", () =>
+        const bodyGeo = this.cachedGeo("dog-body", () => new THREE.BoxGeometry(0.6, 0.25, 0.3));
+        const bodyMat = this.cachedMat("dog-body-mat", () =>
           new THREE.MeshLambertMaterial({ color: 0x8b5e3c }),
         ) as THREE.MeshLambertMaterial;
         const body = new THREE.Mesh(bodyGeo, bodyMat);
@@ -1282,7 +1310,7 @@ export class ThreeRenderer {
         body.castShadow = shadows;
         group.add(body);
 
-        const headGeo = cachedGeo("dog-head", () =>
+        const headGeo = this.cachedGeo("dog-head", () =>
           new THREE.SphereGeometry(0.12, seg(6, d), seg(6, d)),
         );
         const head = new THREE.Mesh(headGeo, bodyMat);
@@ -1290,8 +1318,8 @@ export class ThreeRenderer {
         group.add(head);
 
         // Simplified: snout + nose as one box
-        const snoutGeo = cachedGeo("dog-snout", () => new THREE.BoxGeometry(0.1, 0.06, 0.08));
-        const snoutMat = cachedMat("dog-snout-mat", () =>
+        const snoutGeo = this.cachedGeo("dog-snout", () => new THREE.BoxGeometry(0.1, 0.06, 0.08));
+        const snoutMat = this.cachedMat("dog-snout-mat", () =>
           new THREE.MeshLambertMaterial({ color: 0x7a4f32 }),
         ) as THREE.MeshLambertMaterial;
         const snout = new THREE.Mesh(snoutGeo, snoutMat);
@@ -1299,10 +1327,10 @@ export class ThreeRenderer {
         group.add(snout);
 
         // Legs (4 cylinders)
-        const legGeo = cachedGeo("dog-leg", () =>
+        const legGeo = this.cachedGeo("dog-leg", () =>
           new THREE.CylinderGeometry(0.03, 0.03, 0.2, seg(4, d)),
         );
-        const legMat = cachedMat("dog-leg-mat", () =>
+        const legMat = this.cachedMat("dog-leg-mat", () =>
           new THREE.MeshLambertMaterial({ color: 0x7a4f32 }),
         ) as THREE.MeshLambertMaterial;
         const legPositions = [[0.2, 0.1, 0.12], [0.2, 0.1, -0.12], [-0.2, 0.1, 0.12], [-0.2, 0.1, -0.12]];
@@ -1321,13 +1349,15 @@ export class ThreeRenderer {
 
     switch (entity.subType) {
       case "spark-plug": {
-        const bodyGeo = cachedGeo("sp-body", () =>
+        const bodyGeo = this.cachedGeo("sp-body", () =>
           new THREE.CylinderGeometry(0.08, 0.06, 0.4, seg(6, d)),
         );
-        const bodyMat = new THREE.MeshStandardMaterial({
-          color: 0xc0c0c0, emissive: 0xffd700, emissiveIntensity: 0.8,
-          roughness: 0.3, metalness: 0.7,
-        });
+        const bodyMat = this.cachedMat("sp-mat", () =>
+          new THREE.MeshStandardMaterial({
+            color: 0xc0c0c0, emissive: 0xffd700, emissiveIntensity: 0.8,
+            roughness: 0.3, metalness: 0.7,
+          }),
+        );
         const body = new THREE.Mesh(bodyGeo, bodyMat);
         body.position.y = 0.2;
         group.add(body);
@@ -1335,13 +1365,15 @@ export class ThreeRenderer {
       }
 
       case "jet": {
-        const geo = cachedGeo("jet", () =>
+        const geo = this.cachedGeo("jet", () =>
           new THREE.SphereGeometry(0.2, seg(8, d), seg(8, d)),
         );
-        const mat = new THREE.MeshStandardMaterial({
-          color: 0xdaa520, emissive: 0xdaa520, emissiveIntensity: 1.5,
-          roughness: 0.3, metalness: 0.6,
-        });
+        const mat = this.cachedMat("jet-mat", () =>
+          new THREE.MeshStandardMaterial({
+            color: 0xdaa520, emissive: 0xdaa520, emissiveIntensity: 1.5,
+            roughness: 0.3, metalness: 0.6,
+          }),
+        );
         const mesh = new THREE.Mesh(geo, mat);
         mesh.position.y = 0.2;
         group.add(mesh);
@@ -1349,13 +1381,15 @@ export class ThreeRenderer {
       }
 
       case "pipe": {
-        const geo = cachedGeo("pipe", () =>
+        const geo = this.cachedGeo("pipe", () =>
           new THREE.CylinderGeometry(0.06, 0.06, 0.6, seg(6, d)),
         );
-        const mat = new THREE.MeshStandardMaterial({
-          color: 0xb0b0b0, emissive: 0xffd700, emissiveIntensity: 0.6,
-          roughness: 0.2, metalness: 0.8,
-        });
+        const mat = this.cachedMat("pipe-mat", () =>
+          new THREE.MeshStandardMaterial({
+            color: 0xb0b0b0, emissive: 0xffd700, emissiveIntensity: 0.6,
+            roughness: 0.2, metalness: 0.8,
+          }),
+        );
         const mesh = new THREE.Mesh(geo, mat);
         mesh.rotation.z = Math.PI / 2;
         mesh.position.y = 0.2;
@@ -1364,19 +1398,21 @@ export class ThreeRenderer {
       }
 
       case "cylinder": {
-        const geo = cachedGeo("cyl", () =>
+        const geo = this.cachedGeo("cyl", () =>
           new THREE.CylinderGeometry(0.15, 0.15, 0.5, seg(8, d)),
         );
-        const mat = new THREE.MeshStandardMaterial({
-          color: 0xdaa520, emissive: 0xffd700, emissiveIntensity: 2,
-          roughness: 0.2, metalness: 0.7,
-        });
+        const mat = this.cachedMat("cyl-mat", () =>
+          new THREE.MeshStandardMaterial({
+            color: 0xdaa520, emissive: 0xffd700, emissiveIntensity: 2,
+            roughness: 0.2, metalness: 0.7,
+          }),
+        );
         const mesh = new THREE.Mesh(geo, mat);
         mesh.position.y = 0.25;
         group.add(mesh);
 
         // Simplified: 2 fins instead of 4
-        const finGeo = cachedGeo("cyl-fin", () => new THREE.BoxGeometry(0.35, 0.02, 0.35));
+        const finGeo = this.cachedGeo("cyl-fin", () => new THREE.BoxGeometry(0.35, 0.02, 0.35));
         for (let i = 0; i < 2; i++) {
           const fin = new THREE.Mesh(finGeo, mat);
           fin.position.y = 0.15 + i * 0.2;
@@ -1395,7 +1431,7 @@ export class ThreeRenderer {
     const shadows = this.q.shadowsEnabled;
 
     // Building — Lambert
-    const bodyGeo = cachedGeo("shop-body", () => new THREE.BoxGeometry(1, 1, 1));
+    const bodyGeo = this.cachedGeo("shop-body", () => new THREE.BoxGeometry(1, 1, 1));
     const bodyMat = new THREE.MeshLambertMaterial({ color: brand.bg });
     const body = new THREE.Mesh(bodyGeo, bodyMat);
     body.scale.set(shopW, shopH, shopD);
@@ -1404,7 +1440,7 @@ export class ThreeRenderer {
     group.add(body);
 
     // Awning
-    const awningGeo = cachedGeo("shop-awning", () => new THREE.BoxGeometry(1, 0.08, 1));
+    const awningGeo = this.cachedGeo("shop-awning", () => new THREE.BoxGeometry(1, 0.08, 1));
     const awningMat = new THREE.MeshLambertMaterial({ color: brand.awning });
     const awning = new THREE.Mesh(awningGeo, awningMat);
     awning.scale.set(shopW + 0.3, 1, shopD + 0.4);
@@ -1412,7 +1448,7 @@ export class ThreeRenderer {
     group.add(awning);
 
     // Sign (emissive for bloom)
-    const signGeo = cachedGeo("shop-sign", () => new THREE.BoxGeometry(1, 0.3, 0.05));
+    const signGeo = this.cachedGeo("shop-sign", () => new THREE.BoxGeometry(1, 0.3, 0.05));
     const signMat = new THREE.MeshStandardMaterial({
       color: brand.trim, emissive: brand.trim, emissiveIntensity: 1.5, roughness: 0.3,
     });
@@ -1435,9 +1471,10 @@ export class ThreeRenderer {
 
     this.mopedGroup.position.set(0, 0, mopedZ);
 
-    // Wheelie
+    // Wheelie — normalized against the moped's actual wheelieDuration
     if (state.player.isWheeling) {
-      const wheelieProgress = state.player.wheelieTimer / 500;
+      const duration = state.player.wheelieDuration > 0 ? state.player.wheelieDuration : 500;
+      const wheelieProgress = Math.max(0, Math.min(1, state.player.wheelieTimer / duration));
       this.mopedGroup.rotation.z = Math.sin(wheelieProgress * Math.PI) * 0.3;
       this.mopedGroup.position.y = Math.sin(wheelieProgress * Math.PI) * 0.4;
     } else {
@@ -1445,10 +1482,12 @@ export class ThreeRenderer {
       this.mopedGroup.position.y = 0;
     }
 
-    // Spin wheels
-    const wheelSpeed = state.speed * 0.01;
-    this.mopedParts.rearWheel.rotation.z += wheelSpeed * 0.016;
-    this.mopedParts.frontWheel.rotation.z += wheelSpeed * 0.016;
+    // Spin wheels when running and not paused
+    if (state.phase === "running" && !state.paused) {
+      const wheelSpeed = state.speed * 0.01;
+      this.mopedParts.rearWheel.rotation.z += wheelSpeed * 0.016;
+      this.mopedParts.frontWheel.rotation.z += wheelSpeed * 0.016;
+    }
 
     // Invincibility blink
     if (state.player.isInvincible) {
@@ -1494,29 +1533,22 @@ export class ThreeRenderer {
       return true;
     });
 
-    // Write to instanced mesh — only write active count + 1 (to hide last)
-    const writeCount = Math.min(this.particles.length + 1, maxE);
-    for (let i = 0; i < writeCount; i++) {
-      if (i < this.particles.length) {
-        const p = this.particles[i]!;
-        const s = p.size * (1 + p.life * 3);
-        _tmpMatrix.makeScale(s, s, s);
-        _tmpVec.set(p.x, p.y, p.z);
-        _tmpMatrix.setPosition(_tmpVec);
-      } else {
-        _tmpMatrix.makeScale(0, 0, 0);
-        _tmpMatrix.setPosition(0, -100, 0);
-      }
+    const activeCount = this.particles.length;
+    for (let i = 0; i < activeCount; i++) {
+      const p = this.particles[i]!;
+      const s = p.size * (1 + p.life * 3);
+      _tmpMatrix.makeScale(s, s, s);
+      _tmpVec.set(p.x, p.y, p.z);
+      _tmpMatrix.setPosition(_tmpVec);
       this.exhaustInstanced.setMatrixAt(i, _tmpMatrix);
     }
-    // If count shrunk, hide the slot after the new end
-    this.exhaustInstanced.instanceMatrix.needsUpdate = true;
-    this.exhaustInstanced.count = Math.max(this.particles.length, 1);
+    this.exhaustInstanced.count = activeCount;
+    if (activeCount > 0) {
+      this.exhaustInstanced.instanceMatrix.needsUpdate = true;
+    }
   }
 
   private updateSparkles(dt: number): void {
-    const maxS = this.q.maxSparkles;
-
     this.sparkles = this.sparkles.filter((s) => {
       s.life += dt;
       if (s.life >= s.maxLife) return false;
@@ -1527,28 +1559,24 @@ export class ThreeRenderer {
       return true;
     });
 
-    const writeCount = Math.min(this.sparkles.length + 1, maxS);
-    for (let i = 0; i < writeCount; i++) {
-      if (i < this.sparkles.length) {
-        const s = this.sparkles[i]!;
-        const alpha = 1 - s.life / s.maxLife;
-        const sc = 0.08 * alpha;
-        _tmpMatrix.makeScale(sc, sc, sc);
-        _tmpVec.set(s.x, s.y, s.z);
-        _tmpMatrix.setPosition(_tmpVec);
-        this.sparkleInstanced.setMatrixAt(i, _tmpMatrix);
-        this.sparkleInstanced.setColorAt(i, _tmpColor.setHex(s.color));
-      } else {
-        _tmpMatrix.makeScale(0, 0, 0);
-        _tmpMatrix.setPosition(0, -100, 0);
-        this.sparkleInstanced.setMatrixAt(i, _tmpMatrix);
+    const activeCount = this.sparkles.length;
+    for (let i = 0; i < activeCount; i++) {
+      const s = this.sparkles[i]!;
+      const alpha = 1 - s.life / s.maxLife;
+      const sc = 0.08 * alpha;
+      _tmpMatrix.makeScale(sc, sc, sc);
+      _tmpVec.set(s.x, s.y, s.z);
+      _tmpMatrix.setPosition(_tmpVec);
+      this.sparkleInstanced.setMatrixAt(i, _tmpMatrix);
+      this.sparkleInstanced.setColorAt(i, _tmpColor.setHex(s.color));
+    }
+    this.sparkleInstanced.count = activeCount;
+    if (activeCount > 0) {
+      this.sparkleInstanced.instanceMatrix.needsUpdate = true;
+      if (this.sparkleInstanced.instanceColor) {
+        this.sparkleInstanced.instanceColor.needsUpdate = true;
       }
     }
-    this.sparkleInstanced.instanceMatrix.needsUpdate = true;
-    if (this.sparkleInstanced.instanceColor) {
-      this.sparkleInstanced.instanceColor.needsUpdate = true;
-    }
-    this.sparkleInstanced.count = Math.max(this.sparkles.length, 1);
   }
 
   private updateSpeedLines(state: RenderState, dt: number): void {
@@ -1557,12 +1585,8 @@ export class ThreeRenderer {
     if (state.speed < 250) {
       if (this.speedLines.length > 0) {
         this.speedLines = [];
-        this.speedLineInstanced.count = 1;
-        _tmpMatrix.makeScale(0, 0, 0);
-        _tmpMatrix.setPosition(0, -100, 0);
-        this.speedLineInstanced.setMatrixAt(0, _tmpMatrix);
-        this.speedLineInstanced.instanceMatrix.needsUpdate = true;
       }
+      this.speedLineInstanced.count = 0;
       return;
     }
 
@@ -1582,21 +1606,18 @@ export class ThreeRenderer {
       return sl.x + sl.length > -15;
     });
 
-    const writeCount = Math.min(this.speedLines.length + 1, maxSL);
-    for (let i = 0; i < writeCount; i++) {
-      if (i < this.speedLines.length) {
-        const sl = this.speedLines[i]!;
-        _tmpMatrix.makeScale(sl.length, 1, 1);
-        _tmpVec.set(sl.x, 0.1, sl.z);
-        _tmpMatrix.setPosition(_tmpVec);
-      } else {
-        _tmpMatrix.makeScale(0, 0, 0);
-        _tmpMatrix.setPosition(0, -100, 0);
-      }
+    const activeCount = this.speedLines.length;
+    for (let i = 0; i < activeCount; i++) {
+      const sl = this.speedLines[i]!;
+      _tmpMatrix.makeScale(sl.length, 1, 1);
+      _tmpVec.set(sl.x, 0.1, sl.z);
+      _tmpMatrix.setPosition(_tmpVec);
       this.speedLineInstanced.setMatrixAt(i, _tmpMatrix);
     }
-    this.speedLineInstanced.instanceMatrix.needsUpdate = true;
-    this.speedLineInstanced.count = Math.max(this.speedLines.length, 1);
+    this.speedLineInstanced.count = activeCount;
+    if (activeCount > 0) {
+      this.speedLineInstanced.instanceMatrix.needsUpdate = true;
+    }
   }
 
   // ── EFFECTS ─────────────────────────────────────────────────────────────

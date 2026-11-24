@@ -32,7 +32,7 @@ export function GameContainer() {
           <div>
             <h1
               className="text-4xl text-[#FFD700] md:text-6xl"
-              style={{ fontFamily: "Bangers, cursive" }}
+              style={{ fontFamily: "var(--font-bangers), Bangers, cursive" }}
             >
               EAST BAY RUNNER
             </h1>
@@ -48,19 +48,25 @@ export function GameContainer() {
             </h3>
             <div className="space-y-2 text-sm">
               <div className="flex items-center gap-3">
-                <kbd className="inline-flex min-w-[4.5rem] items-center justify-center rounded border border-gray-600 bg-gray-800 px-2 py-1 font-mono text-xs text-white">
-                  UP / DOWN
+                <kbd className="inline-flex min-w-[5.5rem] items-center justify-center rounded border border-gray-600 bg-gray-800 px-2 py-1 font-mono text-xs text-white">
+                  UP / DOWN / W / S
                 </kbd>
                 <span className="text-gray-300">Change lanes</span>
               </div>
               <div className="flex items-center gap-3">
-                <kbd className="inline-flex min-w-[4.5rem] items-center justify-center rounded border border-gray-600 bg-gray-800 px-2 py-1 font-mono text-xs text-white">
-                  SPACE
+                <kbd className="inline-flex min-w-[5.5rem] items-center justify-center rounded border border-gray-600 bg-gray-800 px-2 py-1 font-mono text-xs text-white">
+                  SPACE / RIGHT
                 </kbd>
                 <span className="text-gray-300">Wheelie over obstacles</span>
               </div>
               <div className="flex items-center gap-3">
-                <kbd className="inline-flex min-w-[4.5rem] items-center justify-center rounded border border-gray-600 bg-gray-800 px-2 py-1 font-mono text-xs text-white">
+                <kbd className="inline-flex min-w-[5.5rem] items-center justify-center rounded border border-gray-600 bg-gray-800 px-2 py-1 font-mono text-xs text-white">
+                  P / ESC
+                </kbd>
+                <span className="text-gray-300">Pause game</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <kbd className="inline-flex min-w-[5.5rem] items-center justify-center rounded border border-gray-600 bg-gray-800 px-2 py-1 font-mono text-xs text-white">
                   SWIPE / TAP
                 </kbd>
                 <span className="text-gray-300">Mobile controls</span>
@@ -78,15 +84,15 @@ export function GameContainer() {
           <div className="flex flex-col gap-4">
             <button
               onClick={() => setPhase("MOPED_SELECT")}
-              className="rounded-lg border-4 border-[#FFD700] bg-[#FFD700] px-10 py-4 text-2xl font-bold text-black transition-all hover:scale-105 hover:bg-yellow-400"
-              style={{ fontFamily: "Bangers, cursive" }}
+              className="rounded-lg border-4 border-[#FFD700] bg-[#FFD700] px-10 py-4 text-2xl font-bold text-black transition-all hover:scale-105 hover:bg-yellow-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+              style={{ fontFamily: "var(--font-bangers), Bangers, cursive" }}
             >
               START
             </button>
             <button
               onClick={() => setPhase("LEADERBOARD")}
-              className="rounded-lg border-4 border-gray-600 bg-black px-10 py-3 text-lg font-bold text-white transition-all hover:border-[#FFD700] hover:text-[#FFD700]"
-              style={{ fontFamily: "Russo One, sans-serif" }}
+              className="rounded-lg border-4 border-gray-600 bg-black px-10 py-3 text-lg font-bold text-white transition-all hover:border-[#FFD700] hover:text-[#FFD700] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+              style={{ fontFamily: "var(--font-russo-one), 'Russo One', sans-serif" }}
             >
               LEADERBOARD
             </button>
@@ -99,7 +105,7 @@ export function GameContainer() {
         <div className="w-full">
           <button
             onClick={() => setPhase("MENU")}
-            className="mb-4 ml-4 text-sm text-gray-400 hover:text-[#FFD700]"
+            className="mb-4 ml-4 rounded px-2 py-1 text-sm text-gray-400 hover:text-[#FFD700] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
           >
             &larr; Main Menu
           </button>
@@ -114,6 +120,8 @@ export function GameContainer() {
             key={gameKey}
             mopedMake={selectedMoped}
             onGameOver={handleGameOver}
+            onRestart={() => setGameKey((k) => k + 1)}
+            onChangeMoped={() => setPhase("MOPED_SELECT")}
           />
         </div>
       )}

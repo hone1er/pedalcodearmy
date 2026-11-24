@@ -62,6 +62,7 @@ export interface PlayerState {
   y: number;
   isWheeling: boolean;
   wheelieTimer: number;
+  wheelieDuration: number;
   isInvincible: boolean;
   invincibleTimer: number;
   health: number;
@@ -151,9 +152,11 @@ export interface RenderState {
   hitFlashTimer: number;
   phase: RunnerGameState["phase"];
   countdownTimer: number;
+  paused?: boolean;
 }
 
 // Constants
+export const VIRTUAL_WIDTH = 900;
 export const TARGET_FPS = 60;
 export const FRAME_TIME = 1 / TARGET_FPS;
 export const CANVAS_ROAD_TOP_RATIO = 0.45;

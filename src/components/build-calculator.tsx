@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,11 +30,11 @@ function RetroBadge({
   color?: "orange" | "gold" | "black" | "green" | "blue";
 }) {
   const colors = {
-    orange: "bg-orange-500 text-white border-orange-700",
+    orange: "bg-orange-500 text-black border-orange-700",
     gold: "bg-[#FFD700] text-black border-yellow-600",
     black: "bg-black text-[#FFD700] border-gray-700",
-    green: "bg-green-500 text-white border-green-700",
-    blue: "bg-blue-500 text-white border-blue-700",
+    green: "bg-green-700 text-white border-green-900",
+    blue: "bg-blue-600 text-white border-blue-800",
   };
   return (
     <span
@@ -53,24 +53,27 @@ function MopedSelector({
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {mopedBuilds.map((build) => (
-        <Card
+        <button
           key={build.id}
-          className="group cursor-pointer overflow-hidden rounded-none border-4 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all duration-200 hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]"
+          type="button"
           onClick={() => onSelect(build)}
+          className="group block w-full text-left focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-black"
         >
-          <CardContent className="p-5">
-            <RetroBadge color="black">{build.make}</RetroBadge>
-            <h3 className="mt-3 text-xl font-black uppercase tracking-tight">
-              {build.displayName}
-            </h3>
-            <p className="mt-2 text-sm text-gray-600">
-              {build.tiers.length} build tiers available
-            </p>
-            <div className="mt-4 flex items-center gap-2 font-bold text-orange-500 group-hover:text-orange-600">
-              View Builds <ChevronRight size={18} />
-            </div>
-          </CardContent>
-        </Card>
+          <Card className="h-full overflow-hidden rounded-none border-4 border-black bg-white text-gray-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all duration-200 group-hover:-translate-x-0.5 group-hover:-translate-y-0.5 group-hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
+            <CardContent className="p-5">
+              <RetroBadge color="black">{build.make}</RetroBadge>
+              <h3 className="mt-3 text-xl font-black uppercase tracking-tight text-gray-900">
+                {build.displayName}
+              </h3>
+              <p className="mt-2 text-sm font-medium text-gray-700">
+                {build.tiers.length} build tiers available
+              </p>
+              <div className="mt-4 flex items-center gap-2 font-black uppercase text-orange-700 group-hover:text-orange-800">
+                View Builds <ChevronRight size={18} aria-hidden="true" />
+              </div>
+            </CardContent>
+          </Card>
+        </button>
       ))}
     </div>
   );
@@ -80,94 +83,116 @@ function TierSelector({
   build,
   onSelect,
   onBack,
+  headingRef,
 }: {
   build: MopedBuild;
   onSelect: (tier: BuildTier) => void;
   onBack: () => void;
+  headingRef: RefObject<HTMLDivElement>;
 }) {
   return (
     <div>
-      <div className="mb-6 flex items-center gap-4">
+      <div
+        ref={headingRef}
+        tabIndex={-1}
+        className="mb-6 flex items-center gap-4 border-4 border-black bg-white p-4 text-gray-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] focus:outline-none"
+      >
         <button
+          type="button"
           onClick={onBack}
-          className="rounded-none border-2 border-black bg-white p-2 hover:bg-gray-100"
+          aria-label="Go back to moped selection"
+          className="rounded-none border-2 border-black bg-[#FFD700] p-2 text-black transition-colors hover:bg-yellow-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black"
         >
-          <ArrowLeft size={20} />
+          <ArrowLeft size={20} aria-hidden="true" />
         </button>
         <div>
           <RetroBadge color="black">{build.make}</RetroBadge>
-          <h2 className="mt-1 text-2xl font-black uppercase tracking-tight">
+          <h2 className="mt-1 text-2xl font-black uppercase tracking-tight text-gray-900">
             {build.displayName}
           </h2>
+          <p className="mt-1 text-sm font-medium text-gray-700">
+            Choose your performance tier. Each level builds on the previous
+            &mdash; always start with a well-tuned stock setup.
+          </p>
         </div>
       </div>
-
-      <p className="mb-6 text-gray-600">
-        Choose your performance tier. Each level builds on the previous -
-        always start with a well-tuned stock setup.
-      </p>
 
       <div className="grid gap-6">
         {build.tiers.map((tier, index) => {
           return (
-            <Card
+            <button
               key={tier.id}
-              className="group cursor-pointer overflow-hidden rounded-none border-4 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all duration-200 hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]"
+              type="button"
               onClick={() => onSelect(tier)}
+              className="group block w-full text-left focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-black"
             >
-              <CardContent className="p-0">
-                <div className="flex flex-col md:flex-row">
-                  <div
-                    className={`flex flex-col justify-center border-b-4 border-black p-6 md:w-48 md:border-b-0 md:border-r-4 ${
-                      index === 0
-                        ? "bg-green-500"
-                        : index === 1
-                          ? "bg-[#FFD700]"
-                          : "bg-orange-500"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <Zap
-                        size={24}
-                        className={index === 1 ? "text-black" : "text-white"}
-                      />
-                      <span
-                        className={`text-xl font-black uppercase ${index === 1 ? "text-black" : "text-white"}`}
-                      >
-                        Tier {index + 1}
-                      </span>
-                    </div>
-                    <p
-                      className={`mt-1 text-sm font-bold ${index === 1 ? "text-gray-800" : "text-white/80"}`}
+              <Card className="overflow-hidden rounded-none border-4 border-black bg-white text-gray-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all duration-200 group-hover:-translate-x-0.5 group-hover:-translate-y-0.5 group-hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
+                <CardContent className="p-0">
+                  <div className="flex flex-col md:flex-row">
+                    <div
+                      className={`flex flex-col justify-center border-b-4 border-black p-6 md:w-52 md:border-b-0 md:border-r-4 ${
+                        index === 0
+                          ? "bg-green-700 text-white"
+                          : index === 1
+                            ? "bg-[#FFD700] text-black"
+                            : "bg-orange-700 text-white"
+                      }`}
                     >
-                      {tier.name}
-                    </p>
-                  </div>
-
-                  <div className="flex-1 p-6">
-                    <div className="flex flex-wrap gap-3">
-                      <div className="flex items-center gap-1">
-                        <DollarSign size={16} className="text-green-600" />
-                        <span className="font-bold">{tier.priceRange}</span>
+                      <div className="flex items-center gap-2">
+                        <Zap size={24} aria-hidden="true" />
+                        <span className="text-xl font-black uppercase">
+                          Tier {index + 1}
+                        </span>
                       </div>
-                      <div className="flex items-center gap-1">
-                        <Gauge size={16} className="text-blue-600" />
-                        <span className="font-bold">{tier.estimatedSpeed}</span>
-                      </div>
+                      <p
+                        className={`mt-1 text-sm font-bold ${
+                          index === 1 ? "text-gray-900" : "text-white"
+                        }`}
+                      >
+                        {tier.name}
+                      </p>
                     </div>
 
-                    <p className="mt-2 text-lg font-black">{tier.tagline}</p>
-                    <p className="mt-1 text-sm text-gray-600">
-                      {tier.description.slice(0, 120)}...
-                    </p>
+                    <div className="flex-1 p-6">
+                      <div className="flex flex-wrap gap-4">
+                        <div className="flex items-center gap-1">
+                          <DollarSign
+                            size={16}
+                            className="text-green-700"
+                            aria-hidden="true"
+                          />
+                          <span className="font-bold text-gray-900">
+                            {tier.priceRange}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Gauge
+                            size={16}
+                            className="text-blue-700"
+                            aria-hidden="true"
+                          />
+                          <span className="font-bold text-gray-900">
+                            {tier.estimatedSpeed}
+                          </span>
+                        </div>
+                      </div>
 
-                    <div className="mt-4 flex items-center gap-2 font-bold text-orange-500 group-hover:text-orange-600">
-                      See Parts List <ChevronRight size={18} />
+                      <p className="mt-2 text-lg font-black text-gray-900">
+                        {tier.tagline}
+                      </p>
+                      <p className="mt-1 text-sm text-gray-700">
+                        {tier.description.slice(0, 120)}...
+                      </p>
+
+                      <div className="mt-4 flex items-center gap-2 font-black uppercase text-orange-700 group-hover:text-orange-800">
+                        See Parts List{" "}
+                        <ChevronRight size={18} aria-hidden="true" />
+                      </div>
                     </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            </button>
           );
         })}
       </div>
@@ -180,26 +205,34 @@ function PartsBreakdown({
   tier,
   onBack,
   onStartOver,
+  headingRef,
 }: {
   build: MopedBuild;
   tier: BuildTier;
   onBack: () => void;
   onStartOver: () => void;
+  headingRef: RefObject<HTMLDivElement>;
 }) {
   const totals = calculateTierTotal(tier);
   const tierIndex = build.tiers.findIndex((t) => t.id === tier.id);
 
   return (
     <div>
-      <div className="mb-6 flex items-center gap-4">
+      <div
+        ref={headingRef}
+        tabIndex={-1}
+        className="mb-6 flex items-center gap-4 border-4 border-black bg-white p-4 text-gray-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] focus:outline-none"
+      >
         <button
+          type="button"
           onClick={onBack}
-          className="rounded-none border-2 border-black bg-white p-2 hover:bg-gray-100"
+          aria-label="Go back to build tiers"
+          className="rounded-none border-2 border-black bg-[#FFD700] p-2 text-black transition-colors hover:bg-yellow-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black"
         >
-          <ArrowLeft size={20} />
+          <ArrowLeft size={20} aria-hidden="true" />
         </button>
         <div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <RetroBadge color="black">{build.make}</RetroBadge>
             <RetroBadge
               color={
@@ -213,49 +246,65 @@ function PartsBreakdown({
               {tier.name}
             </RetroBadge>
           </div>
-          <h2 className="mt-1 text-2xl font-black uppercase tracking-tight">
+          <h2 className="mt-1 text-2xl font-black uppercase tracking-tight text-gray-900">
             {tier.tagline}
           </h2>
         </div>
       </div>
 
       {/* Summary Card */}
-      <Card className="mb-6 overflow-hidden rounded-none border-4 border-black bg-[#FFD700] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+      <Card className="mb-6 overflow-hidden rounded-none border-4 border-black bg-[#FFD700] text-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
         <CardContent className="p-6">
           <div className="grid gap-4 sm:grid-cols-3">
             <div className="text-center">
-              <DollarSign size={24} className="mx-auto mb-1" />
+              <DollarSign size={24} className="mx-auto mb-1" aria-hidden="true" />
               <p className="text-2xl font-black">
                 ${totals.min.toLocaleString()}
-                {totals.min !== totals.max && ` - $${totals.max.toLocaleString()}`}
+                {totals.min !== totals.max &&
+                  ` - $${totals.max.toLocaleString()}`}
               </p>
-              <p className="text-xs font-bold uppercase">Estimated Cost</p>
+              <p className="text-xs font-bold uppercase">
+                Estimated Cost
+                {totals.optionalCount > 0 ? " (incl. optional)" : ""}
+              </p>
+              {totals.optionalCount > 0 && (
+                <p className="mt-0.5 text-xs font-semibold text-gray-900">
+                  Core parts: ${totals.requiredMin.toLocaleString()}
+                  {totals.requiredMin !== totals.requiredMax &&
+                    ` - $${totals.requiredMax.toLocaleString()}`}
+                </p>
+              )}
             </div>
             <div className="text-center">
-              <Gauge size={24} className="mx-auto mb-1" />
+              <Gauge size={24} className="mx-auto mb-1" aria-hidden="true" />
               <p className="text-2xl font-black">{tier.estimatedSpeed}</p>
               <p className="text-xs font-bold uppercase">Target Speed</p>
             </div>
             <div className="text-center">
-              <Wrench size={24} className="mx-auto mb-1" />
+              <Wrench size={24} className="mx-auto mb-1" aria-hidden="true" />
               <p className="text-2xl font-black">{tier.parts.length}</p>
-              <p className="text-xs font-bold uppercase">Parts</p>
+              <p className="text-xs font-bold uppercase">
+                Parts
+                {totals.optionalCount > 0
+                  ? ` (${totals.optionalCount} optional)`
+                  : ""}
+              </p>
             </div>
           </div>
         </CardContent>
       </Card>
 
       {/* Description */}
-      <Card className="mb-6 overflow-hidden rounded-none border-4 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+      <Card className="mb-6 overflow-hidden rounded-none border-4 border-black bg-white text-gray-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
         <CardContent className="p-6">
-          <p className="text-gray-700">{tier.description}</p>
+          <p className="font-medium text-gray-800">{tier.description}</p>
         </CardContent>
       </Card>
 
       {/* Parts List */}
-      <Card className="mb-6 overflow-hidden rounded-none border-4 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+      <Card className="mb-6 overflow-hidden rounded-none border-4 border-black bg-white text-gray-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
         <div className="flex items-center gap-2 border-b-4 border-black bg-black p-4 text-[#FFD700]">
-          <ShoppingCart size={20} />
+          <ShoppingCart size={20} aria-hidden="true" />
           <h3 className="font-black uppercase tracking-wide">Parts List</h3>
         </div>
         <CardContent className="p-0">
@@ -263,16 +312,23 @@ function PartsBreakdown({
             {tier.parts.map((part, index) => (
               <div
                 key={index}
-                className="flex items-center justify-between p-4 hover:bg-gray-50"
+                className="flex flex-wrap items-center justify-between gap-2 p-4 hover:bg-gray-50"
               >
-                <div className="flex-1">
-                  <p className="font-bold">{part.name}</p>
+                <div className="min-w-[200px] flex-1">
+                  <p className="font-bold text-gray-900">
+                    {part.name}
+                    {part.optional && (
+                      <span className="ml-2 inline-block border border-black bg-amber-100 px-1.5 py-0.5 text-[10px] font-black uppercase text-black">
+                        Optional
+                      </span>
+                    )}
+                  </p>
                   {part.notes && (
-                    <p className="text-sm text-gray-500">{part.notes}</p>
+                    <p className="text-sm text-gray-600">{part.notes}</p>
                   )}
                 </div>
-                <div className="ml-4 flex items-center gap-3">
-                  <span className="font-black text-green-600">
+                <div className="flex items-center gap-3">
+                  <span className="font-black text-green-700">
                     {part.priceRange ?? `$${part.price}`}
                   </span>
                   {part.vendorUrl && (
@@ -280,9 +336,14 @@ function PartsBreakdown({
                       href={part.vendorUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="rounded-none border-2 border-black bg-[#FFD700] px-2 py-1 text-xs font-bold transition-colors hover:bg-yellow-400"
+                      className="rounded-none border-2 border-black bg-[#FFD700] px-2.5 py-1 text-xs font-black uppercase text-black transition-colors hover:bg-yellow-400"
                     >
-                      {part.vendor} <ExternalLink size={12} className="ml-1 inline" />
+                      {part.vendor}{" "}
+                      <ExternalLink
+                        size={12}
+                        className="ml-1 inline"
+                        aria-hidden="true"
+                      />
                     </Link>
                   )}
                 </div>
@@ -294,19 +355,19 @@ function PartsBreakdown({
 
       {/* Tips */}
       {tier.tips && tier.tips.length > 0 && (
-        <Card className="mb-6 overflow-hidden rounded-none border-4 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-          <div className="flex items-center gap-2 border-b-4 border-black bg-blue-500 p-4 text-white">
-            <Lightbulb size={20} />
+        <Card className="mb-6 overflow-hidden rounded-none border-4 border-black bg-white text-gray-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+          <div className="flex items-center gap-2 border-b-4 border-black bg-blue-600 p-4 text-white">
+            <Lightbulb size={20} aria-hidden="true" />
             <h3 className="font-black uppercase tracking-wide">Pro Tips</h3>
           </div>
           <CardContent className="p-6">
             <ul className="space-y-3">
               {tier.tips.map((tip, index) => (
                 <li key={index} className="flex items-start gap-3">
-                  <span className="mt-1 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-blue-500 text-xs font-bold text-white">
+                  <span className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
                     {index + 1}
                   </span>
-                  <span>{tip}</span>
+                  <span className="text-gray-800">{tip}</span>
                 </li>
               ))}
             </ul>
@@ -315,7 +376,7 @@ function PartsBreakdown({
       )}
 
       {/* Vendor Links */}
-      <Card className="mb-6 overflow-hidden rounded-none border-4 border-black bg-gray-50 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+      <Card className="mb-6 overflow-hidden rounded-none border-4 border-black bg-gray-50 text-gray-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
         <CardContent className="p-6">
           <h4 className="mb-4 font-black uppercase">Where to Buy</h4>
           <div className="flex flex-wrap gap-3">
@@ -323,25 +384,40 @@ function PartsBreakdown({
               href="https://www.treatland.tv"
               target="_blank"
               rel="noopener noreferrer"
-              className="rounded-none border-2 border-black bg-[#FFD700] px-4 py-2 font-bold transition-colors hover:bg-yellow-400"
+              className="rounded-none border-2 border-black bg-[#FFD700] px-4 py-2 font-bold text-black transition-colors hover:bg-yellow-400"
             >
-              Treatland <ExternalLink size={14} className="ml-1 inline" />
+              Treatland{" "}
+              <ExternalLink
+                size={14}
+                className="ml-1 inline"
+                aria-hidden="true"
+              />
             </Link>
             <Link
               href="https://www.1977mopeds.com"
               target="_blank"
               rel="noopener noreferrer"
-              className="rounded-none border-2 border-black bg-white px-4 py-2 font-bold transition-colors hover:bg-gray-100"
+              className="rounded-none border-2 border-black bg-white px-4 py-2 font-bold text-black transition-colors hover:bg-gray-100"
             >
-              1977 Mopeds <ExternalLink size={14} className="ml-1 inline" />
+              1977 Mopeds{" "}
+              <ExternalLink
+                size={14}
+                className="ml-1 inline"
+                aria-hidden="true"
+              />
             </Link>
             <Link
               href="https://www.mopedarmy.com"
               target="_blank"
               rel="noopener noreferrer"
-              className="rounded-none border-2 border-black bg-white px-4 py-2 font-bold transition-colors hover:bg-gray-100"
+              className="rounded-none border-2 border-black bg-white px-4 py-2 font-bold text-black transition-colors hover:bg-gray-100"
             >
-              Moped Army Forums <ExternalLink size={14} className="ml-1 inline" />
+              Moped Army Forums{" "}
+              <ExternalLink
+                size={14}
+                className="ml-1 inline"
+                aria-hidden="true"
+              />
             </Link>
           </div>
         </CardContent>
@@ -350,14 +426,16 @@ function PartsBreakdown({
       {/* Actions */}
       <div className="flex flex-wrap gap-4">
         <Button
+          type="button"
           onClick={onBack}
           variant="outline"
-          className="rounded-none border-2 border-black font-bold hover:bg-gray-100"
+          className="rounded-none border-2 border-black bg-white font-bold text-black hover:bg-gray-100"
         >
-          <ArrowLeft size={18} className="mr-2" />
+          <ArrowLeft size={18} className="mr-2" aria-hidden="true" />
           View Other Tiers
         </Button>
         <Button
+          type="button"
           onClick={onStartOver}
           className="rounded-none border-2 border-black bg-[#FFD700] font-bold text-black hover:bg-yellow-400"
         >
@@ -371,6 +449,24 @@ function PartsBreakdown({
 export default function BuildCalculator() {
   const [selectedBuild, setSelectedBuild] = useState<MopedBuild | null>(null);
   const [selectedTier, setSelectedTier] = useState<BuildTier | null>(null);
+  const stepHeadingRef = useRef<HTMLDivElement>(null);
+
+  const stepKey = !selectedBuild
+    ? "select-build"
+    : !selectedTier
+      ? `select-tier:${selectedBuild.id}`
+      : `parts:${selectedBuild.id}:${selectedTier.id}`;
+  const prevStepKeyRef = useRef(stepKey);
+
+  useEffect(() => {
+    if (prevStepKeyRef.current === stepKey) return;
+    prevStepKeyRef.current = stepKey;
+
+    const headingEl = stepHeadingRef.current;
+    if (!headingEl) return;
+    headingEl.focus({ preventScroll: true });
+    headingEl.scrollIntoView({ block: "start" });
+  }, [stepKey]);
 
   const handleSelectBuild = (build: MopedBuild) => {
     setSelectedBuild(build);
@@ -399,11 +495,15 @@ export default function BuildCalculator() {
     <div className="container mx-auto max-w-4xl px-4 py-8">
       {!selectedBuild ? (
         <>
-          <div className="mb-8 text-center">
-            <h2 className="mb-4 text-3xl font-black uppercase tracking-tight md:text-4xl">
+          <div
+            ref={stepHeadingRef}
+            tabIndex={-1}
+            className="mb-8 border-4 border-black bg-white p-6 text-center text-gray-900 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] focus:outline-none"
+          >
+            <h2 className="mb-2 text-3xl font-black uppercase tracking-tight md:text-4xl">
               Choose Your Moped
             </h2>
-            <p className="text-gray-600">
+            <p className="text-gray-700">
               Select your moped model to see recommended build paths and parts
               lists for each performance tier.
             </p>
@@ -415,6 +515,7 @@ export default function BuildCalculator() {
           build={selectedBuild}
           onSelect={handleSelectTier}
           onBack={handleBackFromBuild}
+          headingRef={stepHeadingRef}
         />
       ) : (
         <PartsBreakdown
@@ -422,15 +523,37 @@ export default function BuildCalculator() {
           tier={selectedTier}
           onBack={handleBackFromTier}
           onStartOver={handleStartOver}
+          headingRef={stepHeadingRef}
         />
       )}
 
+      {/* Troubleshooter Cross-Link Banner */}
+      <div className="mt-8 flex flex-col items-center justify-between gap-4 border-4 border-black bg-black p-5 text-[#FFD700] shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] sm:flex-row">
+        <div>
+          <p className="text-lg font-black uppercase tracking-tight">
+            Moped won&apos;t start?
+          </p>
+          <p className="text-sm text-white/80">
+            Dial in spark, fuel, and compression first before bolting on speed
+            parts.
+          </p>
+        </div>
+        <Link
+          href="/troubleshooter"
+          className="inline-flex shrink-0 items-center gap-2 rounded-none border-2 border-[#FFD700] bg-[#FFD700] px-5 py-2.5 text-sm font-black uppercase text-black transition-colors hover:bg-yellow-400"
+        >
+          <Wrench className="h-4 w-4" aria-hidden="true" />
+          Try the Troubleshooter
+        </Link>
+      </div>
+
       {/* Disclaimer */}
-      <div className="mt-8 rounded-none border-2 border-gray-300 bg-gray-50 p-4 text-center text-sm text-gray-500">
+      <div className="mt-6 rounded-none border-4 border-black bg-white p-4 text-center text-sm text-gray-700 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
         <p>
-          <strong>Note:</strong> Prices are estimates and may vary. Always verify
-          compatibility with your specific model year and configuration. Links are
-          provided for convenience - we are not affiliated with these vendors.
+          <strong>Note:</strong> Prices are estimates and may vary. Always
+          verify compatibility with your specific model year and configuration.
+          Links are provided for convenience - we are not affiliated with these
+          vendors.
         </p>
       </div>
     </div>

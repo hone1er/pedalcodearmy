@@ -2,8 +2,8 @@ import "@/styles/globals.css";
 import { GeistSans } from "geist/font/sans";
 import { type Metadata } from "next";
 import Link from "next/link";
-import Image from "next/image";
 import { Providers } from "@/components/providers";
+import { SiteHeader } from "@/components/site-header";
 
 export const metadata: Metadata = {
   title: {
@@ -28,120 +28,79 @@ export const metadata: Metadata = {
   },
 };
 
+const FOOTER_LINKS = [
+  { href: "/stable", label: "The Stable" },
+  { href: "/shop", label: "Shop" },
+  { href: "/members", label: "The Dudes" },
+  { href: "/game", label: "City Runner" },
+  { href: "/privacy", label: "Privacy Policy" },
+] as const;
+
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" className={`${GeistSans.variable}`}>
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link
-          rel="preconnect"
-          href="https://fonts.gstatic.com"
-          crossOrigin="anonymous"
-        />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Alfa+Slab+One&family=Anton&family=Bangers&family=Bebas+Neue&family=Black+Ops+One&family=Bungee&family=Lobster&family=Montserrat:wght@700&family=Orbitron:wght@700&family=Oswald:wght@700&family=Pacifico&family=Permanent+Marker&family=Racing+Sans+One&family=Righteous&family=Roboto+Condensed:wght@700&family=Russo+One&family=Teko:wght@600&display=swap"
-          rel="stylesheet"
-        />
-      </head>
-      <body>
+      <body className="bg-[#FFD700] font-sans text-black antialiased">
         <Providers>
-        <div className="min-h-screen scroll-smooth bg-[#FFD700] font-sans">
-          <header className="sticky top-0 z-30 bg-black py-4 text-[#FFD700]">
-            <div className="container mx-auto flex items-center justify-between px-4">
-              <Link href={"/"} className="flex items-center space-x-2">
-                <Image
-                  src="/images/pedalcode.jpeg"
-                  alt="pedal code logo"
-                  className="h-8 w-8 rounded-full"
-                  width={32}
-                  height={32}
-                />
-                <span className="text-2xl font-bold">Pedal Code Army</span>
-              </Link>
-              <nav className="block">
-                <ul className="flex space-x-6">
-                  <li>
-                    <Link href="/stable" className="hover:underline">
-                      The Stable
-                    </Link>
-                  </li>
-                  <li>
-                    <Link href="/shop" className="hover:underline">
-                      Shop
-                    </Link>
-                  </li>
-                  <li>
-                    <Link
-                      href="/members"
-                      className="hidden hover:underline md:block"
-                    >
-                      The Dudes
-                    </Link>
-                  </li>
-                  <li>
-                    <Link href="/game" className="hover:underline">
-                      City Runner
-                    </Link>
-                  </li>
-                </ul>
-              </nav>
-              {/* <nav className="md:hidden">
-                <Button
-                  size="lg"
-                  className="bg-[#FFD700] text-black hover:bg-[#FFB700]"
+          <div className="flex min-h-screen flex-col bg-[#FFD700]">
+            <SiteHeader />
+            <div className="flex-1">{children}</div>
+            <footer className="border-t-4 border-[#FFD700] bg-black py-12 text-[#FFD700]">
+              <div className="container mx-auto px-4 text-center">
+                <nav
+                  aria-label="Footer navigation"
+                  className="mb-8 flex flex-wrap justify-center gap-x-6 gap-y-2"
                 >
-                  Menu
-                </Button>
-                <div className="absolute left-0 top-0 flex h-full w-full flex-col items-center justify-center space-y-4 bg-black bg-opacity-90">
-                  <a href="#about" className="hover:underline">
-                    About Our Madness
+                  {FOOTER_LINKS.map((link) => (
+                    <Link
+                      key={link.href}
+                      href={link.href}
+                      className="text-sm font-black uppercase tracking-wide text-[#FFD700] underline-offset-4 hover:text-white hover:underline"
+                    >
+                      {link.label}
+                    </Link>
+                  ))}
+                </nav>
+
+                <p className="mb-3">
+                  &copy; {new Date().getFullYear()} Pedal Code Army. No rights
+                  reserved. Seriously, we don&apos;t even know what that means.
+                </p>
+                <p className="mb-3">
+                  Proudly puttering around the streets of East Bay since...
+                  recently.
+                </p>
+                <p className="mb-4">
+                  Founded by Joe. Blame him for this madness.
+                </p>
+
+                <p className="mb-6">
+                  <a
+                    href="tel:+15103897975"
+                    className="font-bold text-[#FFD700] hover:text-white hover:underline"
+                  >
+                    (510) 389-7975
                   </a>
-                  <a href="#rides" className="hover:underline">
-                    Wobbly Rides
-                  </a>
-                  <a href="#join" className="hover:underline">
-                    Join the Chaos
-                  </a>
-                  <a href="/members" className="hover:underline">
-                    The Dudes
-                  </a>
+                </p>
+
+                <div className="mx-auto max-w-2xl border-t border-[#FFD700]/30 pt-6 text-xs text-[#FFD700]/80">
+                  <p className="mb-2 font-bold uppercase tracking-wide text-[#FFD700]">
+                    Legal Disclaimer
+                  </p>
+                  <p>
+                    All products sold by Pedal Code Army, including 3D printed
+                    parts, are provided &quot;as is&quot; without warranty of
+                    any kind. Use at your own risk. Not responsible for injury,
+                    death, property damage, or mechanical failure. Parts are not
+                    safety tested or certified. For off-road and novelty use
+                    only. Professional installation recommended. By purchasing,
+                    you assume all risks and liabilities.
+                  </p>
                 </div>
-              </nav> */}
-            </div>
-          </header>
-          {children}
-        </div>
-        <footer className="bg-black py-12 text-[#FFD700]">
-          <div className="container mx-auto px-4 text-center">
-            <p className="mb-4">
-              &copy; {new Date().getFullYear()} Pedal Code Army. No rights
-              reserved. Seriously, we don&apos;t even know what that means.
-            </p>
-            <p className="mb-4">
-              Proudly puttering around the streets of East Bay since...
-              recently.
-            </p>
-            <p className="mb-4">Founded by Joe. Blame him for this madness.</p>
-
-            <p className="mb-6">
-              <a href="tel:+15103897975" className="hover:text-white hover:underline">
-                (510) 389-7975
-              </a>
-            </p>
-
-            <div className="mx-auto max-w-2xl border-t border-yellow-700 pt-6 text-xs text-yellow-600">
-              <p className="mb-2 font-bold uppercase tracking-wide">Legal Disclaimer</p>
-              <p>
-                All products sold by Pedal Code Army, including 3D printed parts, are provided &quot;as is&quot; without warranty of any kind.
-                Use at your own risk. Not responsible for injury, death, property damage, or mechanical failure.
-                Parts are not safety tested or certified. For off-road and novelty use only.
-                Professional installation recommended. By purchasing, you assume all risks and liabilities.
-              </p>
-            </div>
+              </div>
+            </footer>
           </div>
-        </footer>
         </Providers>
       </body>
     </html>

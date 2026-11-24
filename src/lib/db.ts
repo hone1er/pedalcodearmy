@@ -20,6 +20,9 @@ export async function initializeDatabase() {
       status VARCHAR(50) DEFAULT 'waitlist'
     )
   `;
+  // Columns added after the initial schema; idempotent so existing tables upgrade cleanly.
+  await sql`ALTER TABLE orders ADD COLUMN IF NOT EXISTS letter_spacing VARCHAR(20)`;
+  await sql`ALTER TABLE orders ADD COLUMN IF NOT EXISTS text_case VARCHAR(20)`;
 }
 
 export type OrderInput = {
@@ -32,6 +35,8 @@ export type OrderInput = {
   rightText?: string;
   font?: string;
   textSize?: string;
+  letterSpacing?: string;
+  textCase?: string;
   isCustom?: boolean;
   estimatedPrice?: string;
   notes?: string;
@@ -54,6 +59,8 @@ export async function createOrder(order: OrderInput): Promise<OrderResult | unde
       right_text,
       font,
       text_size,
+      letter_spacing,
+      text_case,
       is_custom,
       estimated_price,
       notes
@@ -67,6 +74,8 @@ export async function createOrder(order: OrderInput): Promise<OrderResult | unde
       ${order.rightText ?? null},
       ${order.font ?? null},
       ${order.textSize ?? null},
+      ${order.letterSpacing ?? null},
+      ${order.textCase ?? null},
       ${order.isCustom ?? false},
       ${order.estimatedPrice ?? null},
       ${order.notes ?? null}
@@ -76,10 +85,56 @@ export async function createOrder(order: OrderInput): Promise<OrderResult | unde
   return result.rows[0];
 }
 
-export async function getOrders() {
-  const result = await sql`
-    SELECT * FROM orders
-    ORDER BY created_at DESC
+export type OrderRow = {
+  id: number;
+  created_at: string;
+  product: string;
+  customer_name: string;
+  customer_email: string;
+  quantity: number | null;
+  side_option: string | null;
+  left_text: string | null;
+  right_text: string | null;
+  font: string | null;
+  text_size: string | null;
+  letter_spacing: string | null;
+  text_case: string | null;
+  is_custom: boolean | null;
+  estimated_price: string | null;
+  notes: string | null;
+  status: string | null;
+};
+
+export async function getOrders({
+  limit,
+  offset,
+}: {
+  limit: number;
+  offset: number;
+}): Promise<OrderRow[]> {
+  const result = await sql<OrderRow>`
+    SELECT
+      id,
+      created_at,
+      product,
+      customer_name,
+      customer_email,
+      quantity,
+      side_option,
+      left_text,
+      right_text,
+      font,
+      text_size,
+      letter_spacing,
+      text_case,
+      is_custom,
+      estimated_price,
+      notes,
+      status
+    FROM orders
+    ORDER BY created_at DESC, id DESC
+    LIMIT ${limit}
+    OFFSET ${offset}
   `;
   return result.rows;
 }

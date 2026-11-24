@@ -11,6 +11,7 @@ import type {
   ActiveEffect,
 } from "./types";
 import {
+  VIRTUAL_WIDTH,
   PIXELS_PER_METER,
   INVINCIBILITY_MS,
   HIT_FREEZE_MS,
@@ -19,8 +20,6 @@ import {
   MAGNET_MS,
   MAGNET_RANGE_PX,
   PLAYER_X_POSITION,
-  CANVAS_ROAD_TOP_RATIO,
-  CANVAS_ROAD_BOTTOM_RATIO,
 } from "./types";
 import { getMopedStats } from "./moped-stats";
 
@@ -76,6 +75,21 @@ const ENTITY_DIMS: Record<EntitySubType, { width: number; height: number }> = {
 
 const SHOP_CYCLE: ShopType[] = ["treatland", "1977-mopeds", "myrons-mopeds"];
 
+// Accumulated non-distance/non-part bonus points (e.g., shop visits) keyed by state instance
+const bonusScores = new WeakMap<RunnerGameState, number>();
+
+function getBonusScore(state: RunnerGameState): number {
+  return bonusScores.get(state) ?? 0;
+}
+
+function setBonusScore(state: RunnerGameState, bonus: number): void {
+  if (bonus > 0) {
+    bonusScores.set(state, bonus);
+  } else {
+    bonusScores.delete(state);
+  }
+}
+
 export function createGameState(moped: MopedMake): RunnerGameState {
   const stats = getMopedStats(moped);
   return {
@@ -94,6 +108,7 @@ export function createGameState(moped: MopedMake): RunnerGameState {
       y: 0,
       isWheeling: false,
       wheelieTimer: 0,
+      wheelieDuration: stats.wheelieDuration,
       isInvincible: false,
       invincibleTimer: 0,
       health: stats.maxHealth,
@@ -118,9 +133,10 @@ export function stepGame(
   state: RunnerGameState,
   stats: MopedStats,
   deltaTime: number,
-  canvasWidth: number,
+  _canvasWidth: number = VIRTUAL_WIDTH,
   effectCallback: GameEffectCallback = noopCallback,
 ): RunnerGameState {
+  const bonusScore = getBonusScore(state);
   const next: RunnerGameState = {
     ...state,
     player: { ...state.player },
@@ -129,6 +145,7 @@ export function stepGame(
     partsCollected: { ...state.partsCollected },
     shopsVisited: [...state.shopsVisited],
   };
+  setBonusScore(next, bonusScore);
 
   // Handle countdown
   if (next.phase === "countdown") {
@@ -180,7 +197,7 @@ export function stepGame(
 
   // Update distance and score
   next.distance += effectiveSpeed * deltaTime;
-  next.score = computeScore(next.distance, next.partsCollected);
+  next.score = computeScore(next.distance, next.partsCollected, bonusScore);
 
   // Update lane transition
   if (next.player.laneProgress < 1) {
@@ -224,39 +241,54 @@ export function stepGame(
     return e.timer > 0;
   });
 
-  // Spawn entities
-  spawnEntities(next, canvasWidth);
+  // Spawn entities in fixed virtual space
+  spawnEntities(next, VIRTUAL_WIDTH);
 
   // Move entities left
-  const playerX = canvasWidth * PLAYER_X_POSITION;
+  const playerX = VIRTUAL_WIDTH * PLAYER_X_POSITION;
   for (const entity of next.entities) {
     if (entity.active) {
       entity.x -= effectiveSpeed * deltaTime;
     }
   }
 
-  // Magnet effect: pull collectibles toward player
+  // Magnet effect: pull nearby collectibles toward player's lane without pulling backward
   if (next.magnetTimer > 0) {
-    const roadTop = 400 * CANVAS_ROAD_TOP_RATIO; // approximate
-    const roadHeight = 400 * (CANVAS_ROAD_BOTTOM_RATIO - CANVAS_ROAD_TOP_RATIO);
-    const playerY = getLaneY(next.player.lane, roadTop, roadHeight);
+    const targetLane =
+      next.player.laneProgress < 1 ? next.player.targetLane : next.player.lane;
 
     for (const entity of next.entities) {
-      if (entity.type === "collectible" && entity.active && !entity.collected) {
-        const dx = playerX - entity.x;
-        const entityY = getLaneY(entity.lane, roadTop, roadHeight);
-        const dy = playerY - entityY;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < MAGNET_RANGE_PX && dist > 0) {
-          // Pull toward player
-          entity.x += (dx / dist) * effectiveSpeed * deltaTime * 1.5;
+      if (entity.type !== "collectible" || !entity.active || entity.collected) {
+        continue;
+      }
+
+      const entityCenterX = entity.x + entity.width / 2;
+      const dx = entityCenterX - playerX;
+
+      // Never pull collectibles backward once they have passed the player
+      if (dx < -25) continue;
+
+      if (dx <= MAGNET_RANGE_PX) {
+        if (entity.lane !== targetLane) {
+          const laneDiff = targetLane - entity.lane;
+          if (dx <= MAGNET_RANGE_PX * 0.65 || Math.abs(laneDiff) <= 1) {
+            entity.lane = targetLane;
+          } else {
+            entity.lane = (entity.lane + Math.sign(laneDiff)) as Lane;
+          }
+        }
+
+        // Gently draw ahead collectibles toward player X without overshooting behind
+        if (dx > 0) {
+          const pullX = Math.min(dx, effectiveSpeed * deltaTime * 0.75);
+          entity.x -= pullX;
         }
       }
     }
   }
 
-  // Collision detection
-  checkCollisions(next, canvasWidth, stats, effectCallback);
+  // Collision detection in fixed virtual space
+  checkCollisions(next, VIRTUAL_WIDTH, stats, effectCallback);
 
   // Cull off-screen entities
   next.entities = next.entities.filter((e) => e.x + e.width > -50 && e.active);
@@ -264,13 +296,23 @@ export function stepGame(
   return next;
 }
 
+function upsertTimedEffect(effects: ActiveEffect[], nextEffect: ActiveEffect): void {
+  const existing = effects.find((e) => e.type === nextEffect.type);
+  if (existing) {
+    existing.timer = nextEffect.timer;
+    existing.source = nextEffect.source;
+  } else {
+    effects.push(nextEffect);
+  }
+}
+
 function checkCollisions(
   state: RunnerGameState,
-  canvasWidth: number,
+  virtualWidth: number,
   _stats: MopedStats,
   effectCallback: GameEffectCallback,
 ): void {
-  const playerX = canvasWidth * PLAYER_X_POSITION;
+  const playerX = virtualWidth * PLAYER_X_POSITION;
   const playerWidth = 50;
 
   // Determine which lanes the player occupies
@@ -338,6 +380,7 @@ function checkCollisions(
         state.shopsVisited.push(shopType);
       }
       state.score += 100;
+      setBonusScore(state, getBonusScore(state) + 100);
       effectCallback.onCollectSparkles(
         entity.x + entity.width / 2,
         getLaneY(entity.lane, 180, 160),
@@ -352,17 +395,17 @@ function checkCollisions(
         );
       } else if (effect.type === "speed-boost") {
         state.speedBoostTimer = SPEED_BOOST_MS;
-        state.effects.push(effect);
+        upsertTimedEffect(state.effects, effect);
       } else if (effect.type === "magnet") {
         state.magnetTimer = MAGNET_MS;
-        state.effects.push(effect);
+        upsertTimedEffect(state.effects, effect);
       }
     }
   }
 }
 
-function spawnEntities(state: RunnerGameState, canvasWidth: number): void {
-  const spawnX = canvasWidth + 50;
+function spawnEntities(state: RunnerGameState, virtualWidth: number): void {
+  const spawnX = virtualWidth + 50;
 
   // Obstacle spawning
   const obstacleInterval =
@@ -513,7 +556,7 @@ export function changeLane(
   const newLane = (state.player.lane + direction) as Lane;
   if (newLane < 0 || newLane > 2) return state;
 
-  return {
+  const next: RunnerGameState = {
     ...state,
     player: {
       ...state.player,
@@ -521,6 +564,8 @@ export function changeLane(
       laneProgress: 0,
     },
   };
+  setBonusScore(next, getBonusScore(state));
+  return next;
 }
 
 export function startWheelie(
@@ -530,14 +575,17 @@ export function startWheelie(
   if (state.phase !== "running") return state;
   if (state.player.isWheeling) return state;
 
-  return {
+  const next: RunnerGameState = {
     ...state,
     player: {
       ...state.player,
       isWheeling: true,
       wheelieTimer: stats.wheelieDuration,
+      wheelieDuration: stats.wheelieDuration,
     },
   };
+  setBonusScore(next, getBonusScore(state));
+  return next;
 }
 
 function getShopEffect(shopType: ShopType): ActiveEffect {
@@ -558,6 +606,7 @@ function getShopEffect(shopType: ShopType): ActiveEffect {
 export function computeScore(
   distance: number,
   partsCollected: Record<CollectibleType, number>,
+  bonusScore = 0,
 ): number {
   const distancePoints = Math.floor(distance / PIXELS_PER_METER);
   const partPoints =
@@ -565,7 +614,7 @@ export function computeScore(
     partsCollected.jet * PART_VALUES.jet +
     partsCollected.pipe * PART_VALUES.pipe +
     partsCollected.cylinder * PART_VALUES.cylinder;
-  return distancePoints + partPoints;
+  return distancePoints + partPoints + bonusScore;
 }
 
 export function buildGameResult(

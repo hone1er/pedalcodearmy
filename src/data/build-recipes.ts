@@ -5,6 +5,7 @@ export type Part = {
   vendor?: string;
   vendorUrl?: string;
   notes?: string;
+  optional?: boolean;
 };
 
 export type BuildTier = {
@@ -60,7 +61,7 @@ export const mopedBuilds: MopedBuild[] = [
         description:
           "Before throwing money at speed parts, make sure your bone-stock setup is dialed in. A well-tuned stock moped will surprise you.",
         estimatedSpeed: "25-30 mph",
-        priceRange: "$0-50",
+        priceRange: "$50",
         parts: [
           {
             name: "New Spark Plug (NGK B5HS)",
@@ -104,7 +105,7 @@ export const mopedBuilds: MopedBuild[] = [
         description:
           "Bolt-on performance that makes a real difference. A pipe and carb/jetting will wake up your Puch without needing a new cylinder.",
         estimatedSpeed: "35-40 mph",
-        priceRange: "$200-400",
+        priceRange: "$300-380 (incl. optional)",
         parts: [
           {
             name: "Performance Exhaust (Tecno Boss, Proma, or similar)",
@@ -135,26 +136,27 @@ export const mopedBuilds: MopedBuild[] = [
             notes: "You'll need bigger jets with more airflow",
           },
           {
-            name: "Performance Variator Weights",
-            price: 20,
+            name: "Performance Clutch Springs & Gearing",
+            price: 25,
             vendor: "Treatland",
             vendorUrl: "https://www.treatland.tv",
-            notes: "Tune your shift points",
+            notes: "Stiffer springs + rear sprocket gearing tweak",
           },
           {
-            name: "CDI Ignition (optional)",
+            name: "CDI Ignition",
             price: 80,
             vendor: "Treatland",
             vendorUrl: "https://www.treatland.tv",
             notes: "Better spark, no points to maintain",
+            optional: true,
           },
         ],
         tips: [
           "Pipe is the single biggest performance gain on a stock engine",
           "Upjet! A pipe needs more fuel - start rich and work down",
-          "Lighter variator weights let the engine rev higher before shifting",
+          "Stiffer clutch springs raise engagement RPM for snappier launches",
           "Pipe may require timing adjustment - check your manual",
-          "Consider a clutch spring upgrade to match higher RPM",
+          "Rear sprocket gearing lets you trade off acceleration vs. top speed",
         ],
       },
       {
@@ -164,7 +166,7 @@ export const mopedBuilds: MopedBuild[] = [
         description:
           "Time to go big. A kit (aftermarket cylinder) is where real power comes from. This is serious business - expect to spend time tuning.",
         estimatedSpeed: "45-55+ mph",
-        priceRange: "$600-1000+",
+        priceRange: "$575-955",
         parts: [
           {
             name: "Cylinder Kit (Treats 70cc, Airsal, or similar)",
@@ -210,10 +212,11 @@ export const mopedBuilds: MopedBuild[] = [
             notes: "Stock clutch can't handle the power",
           },
           {
-            name: "Variator + Weights Setup",
+            name: "3-Shoe Race Clutch & Sprocket Setup",
             price: 50,
             vendor: "Treatland",
             vendorUrl: "https://www.treatland.tv",
+            notes: "Tunable clutch shoes + final drive gearing for 70cc power",
           },
           {
             name: "Head Work/Squish Band Tuning",
@@ -246,7 +249,7 @@ export const mopedBuilds: MopedBuild[] = [
         description:
           "The Magnum shares its engine with the Maxi. Same tuning principles apply - start with a clean carb and fresh ignition.",
         estimatedSpeed: "28-33 mph",
-        priceRange: "$0-50",
+        priceRange: "$48",
         parts: [
           {
             name: "New Spark Plug (NGK B5HS)",
@@ -287,7 +290,7 @@ export const mopedBuilds: MopedBuild[] = [
         description:
           "Same E50/ZA50 engine as Maxi. Pipe and carb upgrades translate directly. The ZA50 2-speed transmission handles power well.",
         estimatedSpeed: "38-45 mph",
-        priceRange: "$200-400",
+        priceRange: "$275-355",
         parts: [
           {
             name: "Performance Exhaust",
@@ -334,7 +337,7 @@ export const mopedBuilds: MopedBuild[] = [
         description:
           "ZA50 2-speed transmission is actually better suited for kits than E50. You can build serious power on this platform.",
         estimatedSpeed: "50-60+ mph",
-        priceRange: "$700-1200+",
+        priceRange: "$670-1,120",
         parts: [
           {
             name: "70cc+ Cylinder Kit",
@@ -406,7 +409,7 @@ export const mopedBuilds: MopedBuild[] = [
         description:
           "Hobbits are known for reliability. A stock Hobbit in good tune is a solid daily rider. The variator system is different from Puch.",
         estimatedSpeed: "28-30 mph",
-        priceRange: "$0-50",
+        priceRange: "$55",
         parts: [
           {
             name: "Spark Plug (NGK BR6HS)",
@@ -447,7 +450,7 @@ export const mopedBuilds: MopedBuild[] = [
         description:
           "Hobbits respond well to pipe and carb upgrades. The variator system allows for good tuning of power delivery.",
         estimatedSpeed: "38-45 mph",
-        priceRange: "$250-450",
+        priceRange: "$265-365",
         parts: [
           {
             name: "Performance Exhaust (Proma, Treats pipe)",
@@ -503,7 +506,7 @@ export const mopedBuilds: MopedBuild[] = [
         description:
           "Kitted Hobbits can be absolute rippers. The variator system, when properly tuned, puts power down efficiently.",
         estimatedSpeed: "50-60+ mph",
-        priceRange: "$700-1100+",
+        priceRange: "$745-995",
         parts: [
           {
             name: "Polini or Treats 70cc Kit",
@@ -574,7 +577,7 @@ export const mopedBuilds: MopedBuild[] = [
         description:
           "Derbis are underrated! The flat reed engine is unique and capable. Start by making sure everything is sealed and timed properly.",
         estimatedSpeed: "28-32 mph",
-        priceRange: "$0-75",
+        priceRange: "$65",
         parts: [
           {
             name: "Spark Plug",
@@ -618,7 +621,7 @@ export const mopedBuilds: MopedBuild[] = [
         description:
           "Derbis wake up nicely with exhaust and carb work. The TJT variator is a popular upgrade path.",
         estimatedSpeed: "38-45 mph",
-        priceRange: "$250-450",
+        priceRange: "$290-370",
         parts: [
           {
             name: "Tecno Boss or Estoril Exhaust",
@@ -667,7 +670,7 @@ export const mopedBuilds: MopedBuild[] = [
         description:
           "Kitted Derbis are serious machines. The Autisa and Metrakit cylinders are well-regarded. The flat reed design flows well with big kits.",
         estimatedSpeed: "50-60+ mph",
-        priceRange: "$600-1000+",
+        priceRange: "$595-865",
         parts: [
           {
             name: "Autisa or Metrakit 65-70cc",
@@ -731,7 +734,7 @@ export const mopedBuilds: MopedBuild[] = [
         description:
           "Tomos bikes are newer and generally reliable. The A35/A55 engines share many parts. Start with basic maintenance.",
         estimatedSpeed: "28-30 mph",
-        priceRange: "$0-50",
+        priceRange: "$45",
         parts: [
           {
             name: "Spark Plug (NGK B5HS)",
@@ -767,11 +770,11 @@ export const mopedBuilds: MopedBuild[] = [
       {
         id: "weekend-warrior",
         name: "Weekend Warrior",
-        tagline: "Tomas go fast",
+        tagline: "Tomos go fast",
         description:
           "Tomos bikes respond well to performance parts. The engine architecture is proven and well-supported.",
         estimatedSpeed: "38-45 mph",
-        priceRange: "$200-400",
+        priceRange: "$250-320",
         parts: [
           {
             name: "Biturbo or Tecno Exhaust",
@@ -820,7 +823,7 @@ export const mopedBuilds: MopedBuild[] = [
         description:
           "Tomos kits are readily available. The A35/A55 bottom end can handle reasonable power. Popular build platform.",
         estimatedSpeed: "50-60+ mph",
-        priceRange: "$600-1000+",
+        priceRange: "$525-735",
         parts: [
           {
             name: "Airsal or Polini 70cc Kit",
@@ -877,23 +880,48 @@ export function getMopedBuildById(id: string): MopedBuild | undefined {
   return mopedBuilds.find((build) => build.id === id);
 }
 
-export function calculateTierTotal(tier: BuildTier): { min: number; max: number } {
+export function calculateTierTotal(tier: BuildTier): {
+  min: number;
+  max: number;
+  requiredMin: number;
+  requiredMax: number;
+  optionalCount: number;
+} {
   let min = 0;
   let max = 0;
+  let requiredMin = 0;
+  let requiredMax = 0;
+  let optionalCount = 0;
 
   tier.parts.forEach((part) => {
+    let partMin = part.price;
+    let partMax = part.price;
+
     if (part.priceRange) {
       const [minPrice, maxPrice] = part.priceRange
         .replace(/\$/g, "")
         .split("-")
         .map((p) => parseInt(p, 10));
-      min += minPrice ?? part.price;
-      max += maxPrice ?? part.price;
+      partMin =
+        minPrice !== undefined && !Number.isNaN(minPrice)
+          ? minPrice
+          : part.price;
+      partMax =
+        maxPrice !== undefined && !Number.isNaN(maxPrice)
+          ? maxPrice
+          : part.price;
+    }
+
+    min += partMin;
+    max += partMax;
+
+    if (part.optional) {
+      optionalCount += 1;
     } else {
-      min += part.price;
-      max += part.price;
+      requiredMin += partMin;
+      requiredMax += partMax;
     }
   });
 
-  return { min, max };
+  return { min, max, requiredMin, requiredMax, optionalCount };
 }

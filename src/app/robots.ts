@@ -5,7 +5,9 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: "*",
       allow: "/",
+      disallow: ["/api/", "/build-calculator", "/troubleshooter"],
     },
     sitemap: "https://pedalcodearmy.com/sitemap.xml",
+    host: "https://pedalcodearmy.com",
   };
 }
