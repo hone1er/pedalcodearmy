@@ -2,6 +2,37 @@
 
 import type { RideTelemetrySnapshot, SimEvent } from "../contract";
 
+export type ArcadeSfxKind =
+  | "lane-shift"
+  | "wheelie"
+  | "wheelie-clear"
+  | "close-call"
+  | "pickup"
+  | "shop-arch"
+  | "hit"
+  | "car-horn"
+  | "dog-bark"
+  | "zone-change";
+
+export interface ArcadeSfxOpts {
+  strong?: boolean;
+  comboStep?: number;
+  shop?: string;
+}
+
+export type GarageSfxKind =
+  | "install"
+  | "plug-pull"
+  | "carb-spray"
+  | "compression-kick"
+  | "spark-snap"
+  | "jet-click"
+  | "switch-flip";
+
+export interface GarageSfxOpts {
+  sparkQuality?: "fat-blue" | "weak-orange" | "none";
+}
+
 const MUTE_STORAGE_KEY = "pca-rwp-muted";
 const SCHEDULER_INTERVAL_MS = 25;
 const LOOKAHEAD_SEC = 0.1;
@@ -50,6 +81,14 @@ export class PulseSynth {
   private whineFilter: BiquadFilterNode | null = null;
   private whineGain: GainNode | null = null;
 
+  private intakeSource: AudioBufferSourceNode | null = null;
+  private intakeFilter: BiquadFilterNode | null = null;
+  private intakeGain: GainNode | null = null;
+
+  private cvtOsc: OscillatorNode | null = null;
+  private cvtFilter: BiquadFilterNode | null = null;
+  private cvtGain: GainNode | null = null;
+
   private popBuffers: AudioBuffer[] = [];
   private knockBuffer: AudioBuffer | null = null;
   private noiseBuffer: AudioBuffer | null = null;
@@ -58,6 +97,15 @@ export class PulseSynth {
   private nextPulseTime = 0;
   private pulseIndex = 0;
   private lastDetonationAtMs = 0;
+
+  // 2-stroke acoustic soul & cooldown state
+  private prevThrottle = 0;
+  private prevPowerbandActive = false;
+  private overrunUntilTime = 0;
+  private nextOverrunPopTime = 0;
+  private powerbandSweepUntilTime = 0;
+  private nextCooldownTickTime = 0;
+  private cooldownTickCount = 0;
 
   private latestSnapshot: RideTelemetrySnapshot | null = null;
   private muted: boolean;
@@ -134,6 +182,10 @@ export class PulseSynth {
     this.latestSnapshot = snapshot;
 
     if (!this.ctx || !this.exhaustFilter || !this.windGain || !this.whineGain) {
+      if (snapshot) {
+        this.prevThrottle = snapshot.throttle;
+        this.prevPowerbandActive = snapshot.powerbandActive;
+      }
       return;
     }
 
@@ -142,11 +194,51 @@ export class PulseSynth {
     if (this.paused || !snapshot?.active) {
       this.windGain.gain.setTargetAtTime(0, now, 0.06);
       this.whineGain.gain.setTargetAtTime(0, now, 0.05);
+      this.intakeGain?.gain.setTargetAtTime(0, now, 0.05);
+      this.cvtGain?.gain.setTargetAtTime(0, now, 0.05);
+      this.prevThrottle = snapshot?.throttle ?? 0;
+      this.prevPowerbandActive = snapshot?.powerbandActive ?? false;
       return;
     }
 
     const listenActive = snapshot.listenMode && snapshot.hasStethoscope;
     const isRaceOrPerf = snapshot.exhaustVisual !== "stock";
+
+    // A3: Detect sharp throttle-chop overrun "ring-ding" & pipe coming on
+    if (
+      this.prevThrottle > 0.6 &&
+      snapshot.throttle < 0.15 &&
+      snapshot.rpm > 3800 &&
+      snapshot.engineRunning &&
+      !snapshot.stalled &&
+      !snapshot.seizedHard
+    ) {
+      this.overrunUntilTime = now + 0.55;
+      this.nextOverrunPopTime = Math.min(this.nextOverrunPopTime || now, now + 0.03);
+    } else if (snapshot.throttle >= 0.25 || !snapshot.engineRunning || snapshot.stalled) {
+      this.overrunUntilTime = 0;
+    }
+
+    if (
+      snapshot.engineRunning &&
+      !snapshot.stalled &&
+      snapshot.powerbandActive &&
+      !this.prevPowerbandActive
+    ) {
+      this.powerbandSweepUntilTime = now + 0.3;
+      this.playPowerbandComeOnSweep(now);
+    }
+
+    this.prevThrottle = snapshot.throttle;
+    this.prevPowerbandActive = snapshot.powerbandActive;
+
+    // A5: Per-make pitch/filter shift
+    const makeFilterMult =
+      snapshot.bikeMake === "tomos-a35"
+        ? 1.12
+        : snapshot.bikeMake === "puch-maxi"
+          ? 0.92
+          : 1.0;
 
     // Resonant exhaust bandpass/lowpass character
     const rpmRatio = Math.max(
@@ -154,6 +246,9 @@ export class PulseSynth {
       Math.min(1.15, snapshot.rpm / Math.max(1000, snapshot.maxRpm)),
     );
     const leanShift = snapshot.leanTone > 0.2 ? snapshot.leanTone * 620 : 0;
+    const sweepRemain = Math.max(0, this.powerbandSweepUntilTime - now) / 0.3;
+    const pipeSweepHz = sweepRemain > 0 ? sweepRemain * 340 : 0;
+    const pipeSweepQ = sweepRemain > 0 ? sweepRemain * 2.2 : 0;
 
     const nextFilterType: BiquadFilterType = isRaceOrPerf ? "bandpass" : "lowpass";
     if (this.exhaustFilter.type !== nextFilterType) {
@@ -163,19 +258,23 @@ export class PulseSynth {
     if (isRaceOrPerf) {
       const baseFreq = snapshot.exhaustVisual === "race" ? 1180 : 1080;
       const targetFreq = Math.min(
-        2800,
-        baseFreq + rpmRatio * 480 + (snapshot.powerbandActive ? 260 : 0) + leanShift,
+        2900,
+        (baseFreq + rpmRatio * 480 + (snapshot.powerbandActive ? 260 : 0) + pipeSweepHz) *
+          makeFilterMult +
+          leanShift,
       );
-      const q = snapshot.powerbandActive ? 4.2 : 2.8;
+      const q = (snapshot.powerbandActive ? 4.2 : 2.8) + pipeSweepQ;
       this.exhaustFilter.frequency.setTargetAtTime(targetFreq, now, 0.04);
       this.exhaustFilter.Q.setTargetAtTime(q, now, 0.04);
     } else {
       const targetFreq = Math.min(
-        2200,
-        580 + rpmRatio * 360 + snapshot.throttle * 140 + leanShift,
+        2350,
+        (580 + rpmRatio * 360 + snapshot.throttle * 140 + pipeSweepHz) *
+          makeFilterMult +
+          leanShift,
       );
       this.exhaustFilter.frequency.setTargetAtTime(targetFreq, now, 0.04);
-      this.exhaustFilter.Q.setTargetAtTime(1.9, now, 0.04);
+      this.exhaustFilter.Q.setTargetAtTime(1.9 + pipeSweepQ * 0.7, now, 0.04);
     }
 
     // Duck exhaust slightly in stethoscope Listen Mode so top-end knock stands out
@@ -194,6 +293,31 @@ export class PulseSynth {
       this.knockBus.gain.setTargetAtTime(knockLevel, now, 0.04);
     }
 
+    // A3: Intake honk (~400Hz band-passed noise scaled by throttle, +60% for perf/race filter)
+    if (this.intakeGain && this.intakeFilter) {
+      if (snapshot.engineRunning && !snapshot.stalled && !snapshot.seizedHard) {
+        const filterMult =
+          snapshot.airFilterVisual === "performance" ||
+          snapshot.airFilterVisual === "race"
+            ? 1.6
+            : 1.0;
+        const listenDuck = listenActive ? 0.45 : 1.0;
+        const intakeLevel =
+          Math.pow(Math.max(0, snapshot.throttle), 1.1) *
+          0.075 *
+          filterMult *
+          listenDuck;
+        this.intakeFilter.frequency.setTargetAtTime(
+          370 + rpmRatio * 90 + snapshot.throttle * 40,
+          now,
+          0.05,
+        );
+        this.intakeGain.gain.setTargetAtTime(intakeLevel, now, 0.045);
+      } else {
+        this.intakeGain.gain.setTargetAtTime(0, now, 0.04);
+      }
+    }
+
     // Wind / road rush proportional to speed, ducked when Listen Mode is active
     const speedRatio = Math.min(1, Math.max(0, snapshot.speedMph / 48));
     const windVol = listenActive
@@ -206,6 +330,23 @@ export class PulseSynth {
         now,
         0.08,
       );
+    }
+
+    // A5: Subtle road-speed-tracked CVT belt hum for Honda Hobbit & Derbi Variant
+    if (this.cvtGain && this.cvtOsc && this.cvtFilter) {
+      const hasCvt =
+        snapshot.bikeMake === "honda-hobbit" ||
+        snapshot.bikeMake === "derbi-variant";
+      if (hasCvt && snapshot.speedMph > 2 && !snapshot.seizedHard) {
+        const cvtFreq = 135 + speedRatio * 230 + rpmRatio * 45;
+        this.cvtOsc.frequency.setTargetAtTime(cvtFreq, now, 0.05);
+        this.cvtFilter.frequency.setTargetAtTime(cvtFreq * 1.15, now, 0.05);
+        const cvtVol =
+          Math.min(0.042, speedRatio * 0.038) * (listenActive ? 0.4 : 1.0);
+        this.cvtGain.gain.setTargetAtTime(cvtVol, now, 0.06);
+      } else {
+        this.cvtGain.gain.setTargetAtTime(0, now, 0.05);
+      }
     }
 
     // Clutch slip whine when slip > 0.15
@@ -273,7 +414,160 @@ export class PulseSynth {
         this.playToneSweep(now, 660, 660, 0.09, "triangle", 0.14);
         this.playToneSweep(now + 0.08, 990, 990, 0.16, "triangle", 0.14);
         break;
+      case "gear-shift":
+        this.playGearShift(now, ev.gear);
+        break;
       case "caption":
+        this.playToneSweep(now, 490, 740, 0.045, "sine", 0.022);
+        break;
+    }
+  }
+
+  /**
+   * A2: Arcade SFX routed through unified `sfxBus` (Street Runner / HUD).
+   */
+  playArcade(kind: ArcadeSfxKind, opts?: ArcadeSfxOpts): void {
+    if (
+      this.disposed ||
+      this.paused ||
+      this.ctx?.state !== "running" ||
+      this.muted ||
+      !this.sfxBus
+    ) {
+      return;
+    }
+
+    const now = this.ctx.currentTime;
+
+    switch (kind) {
+      case "pickup": {
+        const step = Math.max(0, Math.min(12, Math.floor(opts?.comboStep ?? 0)));
+        const mult = Math.pow(2, step / 12);
+        this.playToneSweep(now, 587.33 * mult, 880 * mult, 0.075, "triangle", 0.14);
+        this.playToneSweep(now + 0.055, 880 * mult, 1174.66 * mult, 0.09, "sine", 0.11);
+        break;
+      }
+      case "wheelie": {
+        const strong = opts?.strong !== false;
+        if (strong) {
+          this.playToneSweep(now, 240, 590, 0.14, "sawtooth", 0.13);
+          this.playToneSweep(now + 0.02, 360, 720, 0.12, "triangle", 0.1);
+        } else {
+          this.playToneSweep(now, 145, 235, 0.15, "triangle", 0.13);
+          this.playNoiseBurst(now, 0.1, 320, 1.4, 0.09);
+        }
+        break;
+      }
+      case "wheelie-clear":
+        this.playToneSweep(now, 523.25, 523.25, 0.09, "triangle", 0.14);
+        this.playToneSweep(now + 0.07, 783.99, 783.99, 0.15, "triangle", 0.15);
+        break;
+      case "close-call":
+        this.playNoiseSweep(now, 0.17, 1650, 310, 2.8, 0.18);
+        this.playToneSweep(now, 740, 320, 0.14, "sine", 0.07);
+        break;
+      case "shop-arch": {
+        const fanfare = [523.25, 659.25, 1046.5];
+        fanfare.forEach((freq, i) => {
+          this.playToneSweep(now + i * 0.07, freq, freq, 0.16, "triangle", 0.14);
+        });
+        break;
+      }
+      case "hit":
+        this.playToneSweep(now, 155, 42, 0.18, "sine", 0.34);
+        this.playNoiseBurst(now, 0.22, 720, 0.9, 0.28);
+        break;
+      case "car-horn":
+        this.playDualToneHorn(now, 420, 520, 0.17, 0.13);
+        break;
+      case "dog-bark":
+        this.playDogBarkPulse(now);
+        this.playDogBarkPulse(now + 0.12);
+        break;
+      case "lane-shift":
+        this.playNoiseSweep(now, 0.065, 920, 480, 1.8, 0.07);
+        this.playToneSweep(now, 310, 210, 0.04, "triangle", 0.055);
+        break;
+      case "zone-change": {
+        const chord = [392.0, 493.88, 587.33, 783.99];
+        chord.forEach((freq, idx) => {
+          this.playToneSweep(
+            now + idx * 0.025,
+            freq,
+            freq * 1.005,
+            0.34,
+            idx % 2 === 0 ? "sine" : "triangle",
+            0.065,
+          );
+        });
+        break;
+      }
+    }
+  }
+
+  /**
+   * A7: Garage workbench & diagnostic tool foley routed through unified `sfxBus`.
+   */
+  playGarage(kind: GarageSfxKind, opts?: GarageSfxOpts): void {
+    if (
+      this.disposed ||
+      this.paused ||
+      this.ctx?.state !== "running" ||
+      this.muted ||
+      !this.sfxBus
+    ) {
+      return;
+    }
+
+    const now = this.ctx.currentTime;
+
+    switch (kind) {
+      case "install":
+        // Crisp double ratchet-wrench clicks
+        this.playNoiseBurst(now, 0.03, 2800, 3.8, 0.16);
+        this.playToneSweep(now, 1850, 1250, 0.032, "triangle", 0.12);
+        this.playNoiseBurst(now + 0.08, 0.03, 3100, 4.0, 0.18);
+        this.playToneSweep(now + 0.08, 2200, 1480, 0.036, "triangle", 0.13);
+        break;
+      case "plug-pull":
+        // Metallic squeak + hollow cork pop
+        this.playNoiseSweep(now, 0.075, 1950, 2500, 5.2, 0.09);
+        this.playToneSweep(now + 0.075, 145, 340, 0.065, "sine", 0.22);
+        this.playNoiseBurst(now + 0.08, 0.04, 620, 1.5, 0.11);
+        break;
+      case "carb-spray":
+        // Pressurized aerosol hiss burst
+        this.playNoiseBurst(now, 0.28, 3400, 1.4, 0.17);
+        break;
+      case "compression-kick":
+        // 3 rhythmic puff/gauge ticks
+        for (let i = 0; i < 3; i++) {
+          const t = now + i * 0.12;
+          this.playToneSweep(t, 135, 68, 0.08, "sine", 0.2);
+          this.playNoiseBurst(t + 0.01, 0.06, 520, 1.3, 0.12);
+          this.playToneSweep(t + 0.02, 1650, 1350, 0.02, "triangle", 0.07);
+        }
+        break;
+      case "spark-snap": {
+        const quality = opts?.sparkQuality ?? "fat-blue";
+        if (quality === "fat-blue") {
+          this.playNoiseBurst(now, 0.038, 3900, 2.4, 0.25);
+          this.playToneSweep(now, 2650, 920, 0.032, "triangle", 0.18);
+        } else if (quality === "weak-orange") {
+          this.playNoiseBurst(now, 0.026, 1550, 2.0, 0.09);
+          this.playToneSweep(now, 1350, 680, 0.024, "triangle", 0.09);
+        } else {
+          this.playToneSweep(now, 460, 260, 0.022, "triangle", 0.065);
+        }
+        break;
+      }
+      case "jet-click":
+        this.playToneSweep(now, 2400, 1420, 0.018, "triangle", 0.11);
+        this.playNoiseBurst(now, 0.016, 3200, 3.5, 0.08);
+        break;
+      case "switch-flip":
+        this.playToneSweep(now, 960, 410, 0.026, "triangle", 0.14);
+        this.playNoiseBurst(now, 0.02, 1950, 2.8, 0.1);
         break;
     }
   }
@@ -309,6 +603,30 @@ export class PulseSynth {
     } catch {
       /* already disconnected */
     }
+    try {
+      this.intakeSource?.stop();
+    } catch {
+      /* already stopped */
+    }
+    try {
+      this.intakeSource?.disconnect();
+      this.intakeFilter?.disconnect();
+      this.intakeGain?.disconnect();
+    } catch {
+      /* already disconnected */
+    }
+    try {
+      this.cvtOsc?.stop();
+    } catch {
+      /* already stopped */
+    }
+    try {
+      this.cvtOsc?.disconnect();
+      this.cvtFilter?.disconnect();
+      this.cvtGain?.disconnect();
+    } catch {
+      /* already disconnected */
+    }
     if (this.ctx) {
       void this.ctx.close().catch(() => {
         /* ignore */
@@ -331,6 +649,12 @@ export class PulseSynth {
     this.whineOsc = null;
     this.whineFilter = null;
     this.whineGain = null;
+    this.intakeSource = null;
+    this.intakeFilter = null;
+    this.intakeGain = null;
+    this.cvtOsc = null;
+    this.cvtFilter = null;
+    this.cvtGain = null;
   }
 
   private ensureContext(): AudioContext | null {
@@ -512,6 +836,28 @@ export class PulseSynth {
       this.windSource = windSrc;
       this.windFilter = windFilter;
       this.windGain = windGain;
+
+      // A3: Continuous ~400Hz intake honk noise bed
+      const intakeSrc = ctx.createBufferSource();
+      intakeSrc.buffer = this.noiseBuffer;
+      intakeSrc.loop = true;
+
+      const intakeFilter = ctx.createBiquadFilter();
+      intakeFilter.type = "bandpass";
+      intakeFilter.frequency.value = 400;
+      intakeFilter.Q.value = 2.6;
+
+      const intakeGain = ctx.createGain();
+      intakeGain.gain.value = 0;
+
+      intakeSrc.connect(intakeFilter);
+      intakeFilter.connect(intakeGain);
+      intakeGain.connect(destination);
+      intakeSrc.start();
+
+      this.intakeSource = intakeSrc;
+      this.intakeFilter = intakeFilter;
+      this.intakeGain = intakeGain;
     }
 
     const whineOsc = ctx.createOscillator();
@@ -534,6 +880,28 @@ export class PulseSynth {
     this.whineOsc = whineOsc;
     this.whineFilter = whineFilter;
     this.whineGain = whineGain;
+
+    // A5: Subtle CVT belt hum bed (Honda Hobbit / Derbi Variant)
+    const cvtOsc = ctx.createOscillator();
+    cvtOsc.type = "triangle";
+    cvtOsc.frequency.value = 180;
+
+    const cvtFilter = ctx.createBiquadFilter();
+    cvtFilter.type = "bandpass";
+    cvtFilter.frequency.value = 220;
+    cvtFilter.Q.value = 2.2;
+
+    const cvtGain = ctx.createGain();
+    cvtGain.gain.value = 0;
+
+    cvtOsc.connect(cvtFilter);
+    cvtFilter.connect(cvtGain);
+    cvtGain.connect(destination);
+    cvtOsc.start();
+
+    this.cvtOsc = cvtOsc;
+    this.cvtFilter = cvtFilter;
+    this.cvtGain = cvtGain;
   }
 
   private startScheduler(ctx: AudioContext): void {
@@ -552,10 +920,24 @@ export class PulseSynth {
 
   private scheduleLookahead(ctx: AudioContext): void {
     const snap = this.latestSnapshot;
+    if (!snap?.active) {
+      this.nextPulseTime = ctx.currentTime + 0.03;
+      return;
+    }
+
+    // A8: Hot cylinder cooldown metallic tick-tick pings + faint steam hiss
+    if (snap.seizeCooldownHot && !snap.engineRunning) {
+      if (ctx.currentTime >= this.nextCooldownTickTime) {
+        this.scheduleCooldownTick(ctx.currentTime + 0.01);
+        this.nextCooldownTickTime =
+          ctx.currentTime + 0.36 + Math.random() * 0.55;
+      }
+      this.nextPulseTime = ctx.currentTime + 0.03;
+      return;
+    }
+
     if (
       this.paused ||
-      !snap ||
-      !snap.active ||
       !snap.engineRunning ||
       snap.stalled ||
       snap.seizedHard ||
@@ -577,6 +959,18 @@ export class PulseSynth {
 
     while (this.nextPulseTime < horizon) {
       this.scheduleSinglePulse(ctx, snap, this.nextPulseTime);
+
+      // A3: Sparse bright overrun "ring-ding" pops on sharp throttle chop
+      if (
+        this.nextPulseTime < this.overrunUntilTime &&
+        snap.throttle < 0.2 &&
+        this.nextPulseTime >= this.nextOverrunPopTime
+      ) {
+        this.scheduleOverrunPop(snap, this.nextPulseTime);
+        this.nextOverrunPopTime =
+          this.nextPulseTime + 0.065 + Math.random() * 0.055;
+      }
+
       const jitterPct =
         snap.misfirePattern === "none"
           ? 0.03
@@ -626,8 +1020,14 @@ export class PulseSynth {
 
     const rpmPitch = 0.86 + Math.min(0.45, (snap.rpm / 9500) * 0.42);
     const pipePitch = snap.exhaustVisual !== "stock" ? 1.08 : 0.96;
+    const makePitch =
+      snap.bikeMake === "tomos-a35"
+        ? 1.12
+        : snap.bikeMake === "puch-maxi"
+          ? 0.92
+          : 1.0;
     src.playbackRate.value =
-      rpmPitch * pipePitch * (0.97 + Math.random() * 0.06);
+      rpmPitch * pipePitch * makePitch * (0.97 + Math.random() * 0.06);
 
     const amp =
       (0.38 + snap.throttle * 0.48) *
@@ -729,19 +1129,55 @@ export class PulseSynth {
     started: boolean,
     compressionFeel: "strong" | "weak",
   ): void {
+    // A4: Kickstart lever ratchet + compression chuff/whoosh
+    for (let i = 0; i < 3; i++) {
+      this.playToneSweep(
+        now + i * 0.024,
+        1750 - i * 160,
+        1080 - i * 90,
+        0.022,
+        "triangle",
+        0.095,
+      );
+    }
+
     if (compressionFeel === "strong") {
       // Heavy piston compression chuff + thump
-      this.playToneSweep(now, 140, 62, 0.14, "sine", 0.34);
-      this.playNoiseBurst(now + 0.02, 0.13, 380, 1.2, 0.24);
+      this.playToneSweep(now + 0.02, 145, 60, 0.14, "sine", 0.34);
+      this.playNoiseBurst(now + 0.03, 0.13, 390, 1.2, 0.24);
     } else {
       // Weak airy fast spin
-      this.playToneSweep(now, 210, 150, 0.09, "triangle", 0.14);
-      this.playNoiseBurst(now, 0.12, 950, 0.9, 0.18);
+      this.playToneSweep(now + 0.02, 220, 155, 0.09, "triangle", 0.14);
+      this.playNoiseBurst(now + 0.02, 0.13, 980, 0.9, 0.19);
     }
 
     if (started) {
-      this.playToneSweep(now + 0.14, 180, 320, 0.11, "sawtooth", 0.22);
-      this.playNoiseBurst(now + 0.15, 0.14, 850, 1.8, 0.2);
+      // A4: 2-3 pulse stumbling catch + brief rev flare before smooth idle
+      const catchOffsets = [0.11, 0.2, 0.28];
+      catchOffsets.forEach((offset, idx) => {
+        const t = now + offset;
+        if (this.popBuffers.length > 0 && this.exhaustFilter) {
+          this.playExhaustPopAt(
+            t,
+            0.78 + idx * 0.14,
+            0.55 + idx * 0.15,
+          );
+        } else {
+          this.playToneSweep(
+            t,
+            135 + idx * 35,
+            95 + idx * 25,
+            0.055,
+            "sawtooth",
+            0.14,
+          );
+        }
+      });
+
+      // Brief rev flare up then settle down to idle
+      this.playToneSweep(now + 0.29, 190, 480, 0.13, "sawtooth", 0.17);
+      this.playToneSweep(now + 0.42, 480, 230, 0.16, "sawtooth", 0.12);
+      this.playNoiseBurst(now + 0.3, 0.18, 920, 1.8, 0.16);
     }
   }
 
@@ -881,5 +1317,240 @@ export class PulseSynth {
     };
     src.start(start);
     src.stop(start + duration + 0.02);
+  }
+
+  private playNoiseSweep(
+    start: number,
+    duration: number,
+    startFreq: number,
+    endFreq: number,
+    q: number,
+    peakGain: number,
+  ): void {
+    if (!this.ctx || !this.sfxBus || !this.noiseBuffer) return;
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.noiseBuffer;
+
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = "bandpass";
+    filter.frequency.setValueAtTime(startFreq, start);
+    filter.frequency.exponentialRampToValueAtTime(
+      Math.max(40, endFreq),
+      start + duration,
+    );
+    filter.Q.value = q;
+
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0.001, start);
+    gain.gain.linearRampToValueAtTime(peakGain, start + Math.min(0.02, duration * 0.25));
+    gain.gain.exponentialRampToValueAtTime(0.0008, start + duration);
+
+    src.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.sfxBus);
+    src.onended = () => {
+      src.disconnect();
+      filter.disconnect();
+      gain.disconnect();
+    };
+    src.start(start);
+    src.stop(start + duration + 0.02);
+  }
+
+  private playDualToneHorn(
+    start: number,
+    freqA: number,
+    freqB: number,
+    duration: number,
+    peakGain: number,
+  ): void {
+    if (!this.ctx || !this.sfxBus) return;
+    const ctx = this.ctx;
+
+    const oscA = ctx.createOscillator();
+    const oscB = ctx.createOscillator();
+    oscA.type = "sawtooth";
+    oscB.type = "sawtooth";
+    oscA.frequency.setValueAtTime(freqA, start);
+    oscB.frequency.setValueAtTime(freqB, start);
+
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = 1550;
+    lp.Q.value = 1.6;
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.001, start);
+    gain.gain.linearRampToValueAtTime(peakGain, start + 0.012);
+    gain.gain.setValueAtTime(peakGain * 0.9, start + duration * 0.72);
+    gain.gain.exponentialRampToValueAtTime(0.0008, start + duration);
+
+    oscA.connect(lp);
+    oscB.connect(lp);
+    lp.connect(gain);
+    gain.connect(this.sfxBus);
+
+    let remaining = 2;
+    const handleEnd = (osc: OscillatorNode) => {
+      osc.disconnect();
+      remaining -= 1;
+      if (remaining === 0) {
+        lp.disconnect();
+        gain.disconnect();
+      }
+    };
+    oscA.onended = () => handleEnd(oscA);
+    oscB.onended = () => handleEnd(oscB);
+
+    oscA.start(start);
+    oscB.start(start);
+    oscA.stop(start + duration + 0.02);
+    oscB.stop(start + duration + 0.02);
+  }
+
+  private playDogBarkPulse(start: number): void {
+    if (!this.ctx || !this.sfxBus) return;
+    const ctx = this.ctx;
+    const dur = 0.078;
+
+    const osc = ctx.createOscillator();
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(240, start);
+    osc.frequency.exponentialRampToValueAtTime(470, start + 0.022);
+    osc.frequency.exponentialRampToValueAtTime(185, start + dur);
+
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.setValueAtTime(680, start);
+    bp.Q.value = 2.1;
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.001, start);
+    gain.gain.linearRampToValueAtTime(0.19, start + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0008, start + dur);
+
+    osc.connect(bp);
+    bp.connect(gain);
+    gain.connect(this.sfxBus);
+    osc.onended = () => {
+      osc.disconnect();
+      bp.disconnect();
+      gain.disconnect();
+    };
+    osc.start(start);
+    osc.stop(start + dur + 0.02);
+
+    this.playNoiseBurst(start + 0.005, 0.06, 760, 1.5, 0.11);
+  }
+
+  private playGearShift(now: number, gear: 1 | 2): void {
+    const pitchMult = gear === 2 ? 1.15 : 0.92;
+    this.playToneSweep(now, 195 * pitchMult, 75 * pitchMult, 0.06, "triangle", 0.24);
+    this.playToneSweep(now + 0.012, 1450 * pitchMult, 680 * pitchMult, 0.032, "triangle", 0.15);
+    this.playNoiseBurst(now, 0.048, 540 * pitchMult, 1.6, 0.13);
+  }
+
+  private playPowerbandComeOnSweep(now: number): void {
+    if (!this.ctx || !this.exhaustBus || !this.noiseBuffer) return;
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.noiseBuffer;
+
+    const bp = this.ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.setValueAtTime(480, now);
+    bp.frequency.exponentialRampToValueAtTime(1450, now + 0.22);
+    bp.Q.value = 5.0;
+
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(0.11, now + 0.035);
+    gain.gain.exponentialRampToValueAtTime(0.0008, now + 0.24);
+
+    src.connect(bp);
+    bp.connect(gain);
+    gain.connect(this.exhaustBus);
+    src.onended = () => {
+      src.disconnect();
+      bp.disconnect();
+      gain.disconnect();
+    };
+    src.start(now);
+    src.stop(now + 0.26);
+  }
+
+  private playExhaustPopAt(
+    time: number,
+    playbackRate: number,
+    gainLevel: number,
+  ): void {
+    if (!this.ctx || !this.exhaustFilter || this.popBuffers.length === 0) return;
+    const buf =
+      this.popBuffers[Math.floor(Math.random() * this.popBuffers.length)] ??
+      this.popBuffers[0]!;
+    const src = this.ctx.createBufferSource();
+    src.buffer = buf;
+    src.playbackRate.value = playbackRate;
+
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(gainLevel, time);
+
+    src.connect(gain);
+    gain.connect(this.exhaustFilter);
+    src.onended = () => {
+      src.disconnect();
+      gain.disconnect();
+    };
+    src.start(time);
+  }
+
+  private scheduleOverrunPop(
+    snap: RideTelemetrySnapshot,
+    time: number,
+  ): void {
+    if (!this.ctx || !this.exhaustFilter || this.popBuffers.length === 0) return;
+    const buf =
+      this.popBuffers[(this.pulseIndex + 1) % this.popBuffers.length] ??
+      this.popBuffers[0]!;
+    const src = this.ctx.createBufferSource();
+    src.buffer = buf;
+
+    const makePitch =
+      snap.bikeMake === "tomos-a35"
+        ? 1.12
+        : snap.bikeMake === "puch-maxi"
+          ? 0.92
+          : 1.0;
+    src.playbackRate.value =
+      (1.24 + Math.random() * 0.28) * makePitch;
+
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0.42 + Math.random() * 0.16, time);
+
+    src.connect(gain);
+    gain.connect(this.exhaustFilter);
+    if (this.leanFilter) {
+      gain.connect(this.leanFilter);
+    }
+    src.onended = () => {
+      src.disconnect();
+      gain.disconnect();
+    };
+    src.start(time);
+  }
+
+  private scheduleCooldownTick(time: number): void {
+    if (!this.sfxBus) return;
+    this.cooldownTickCount += 1;
+    const freq = 2600 + Math.random() * 1100;
+    this.playToneSweep(time, freq, freq * 0.86, 0.028, "sine", 0.042);
+
+    // Occasional double tick-tick ping
+    if (this.cooldownTickCount % 2 === 0) {
+      this.playToneSweep(time + 0.085, freq * 1.08, freq * 0.92, 0.025, "sine", 0.032);
+    }
+    // Faint steam hiss every few ticks
+    if (this.cooldownTickCount % 3 === 0) {
+      this.playNoiseBurst(time + 0.03, 0.2, 3600, 1.3, 0.022);
+    }
   }
 }

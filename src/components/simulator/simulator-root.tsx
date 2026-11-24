@@ -18,7 +18,11 @@ import type { RideSummary, SimPhase } from "@/lib/simulator/contract";
 import { getRouteById } from "@/lib/simulator/ride/routes";
 import { getActiveBike, useSimStore } from "@/lib/simulator/store/sim-store";
 import { GarageView } from "./garage/garage-view";
-import { RouteMap } from "./map/route-map";
+import {
+  ROUTE_MEDAL_ORDER,
+  RouteMap,
+  getRouteMedalMeta,
+} from "./map/route-map";
 import { RideView } from "./ride/ride-view";
 import { RunnerView } from "./runner/runner-view";
 import { CraigslistMarket } from "./shop/craigslist-market";
@@ -303,6 +307,37 @@ function RideSummaryModal({
             </div>
           )}
 
+          {summary.medalsEarned && summary.medalsEarned.length > 0 && (
+            <div className="border-2 border-zinc-800 bg-black p-3.5">
+              <p className="mb-2 text-[11px] font-black uppercase tracking-widest text-[#FFD700]">
+                Route Medals Earned
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {ROUTE_MEDAL_ORDER.filter((m) =>
+                  summary.medalsEarned?.includes(m),
+                ).map((medal) => {
+                  const meta = getRouteMedalMeta(medal, route?.hasCoffeeCup);
+                  const MedalIcon = meta.icon;
+                  const isNew = summary.newMedals?.includes(medal);
+                  return (
+                    <span
+                      key={medal}
+                      className={`inline-flex items-center gap-1.5 border-2 px-2.5 py-1 text-xs font-black uppercase ${meta.className}`}
+                    >
+                      <MedalIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                      <span>{meta.label}</span>
+                      {isNew && (
+                        <span className="bg-[#FFD700] px-1.5 py-0.5 text-[9px] font-black text-black">
+                          NEW!
+                        </span>
+                      )}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {summary.notes.length > 0 && (
             <div className="border-2 border-zinc-800 bg-black p-3.5">
               <p className="mb-2 text-[11px] font-black uppercase tracking-widest text-[#FFD700]">
@@ -341,9 +376,10 @@ export function SimulatorRoot() {
   const {
     phase,
     save,
+    runnerPlaying,
     lastRideSummary,
     lastActionNotice,
-    bikeNeedsAttention,
+    bikeVerdict,
     setPhase,
     clearNotice,
     dismissRideSummary,
@@ -354,6 +390,7 @@ export function SimulatorRoot() {
 
   const bike = getActiveBike(save);
   const isRiding = phase === "RIDE" || phase === "ROADSIDE";
+  const hideChrome = isRiding || runnerPlaying;
   const viewGroup = isRiding ? "RIDE" : phase;
   const didMountRef = useRef(false);
 
@@ -388,20 +425,42 @@ export function SimulatorRoot() {
                 <span className="max-w-[140px] truncate sm:max-w-none">
                   {bike.nickname}
                 </span>
-                {bikeNeedsAttention && (
+                {bikeVerdict === "acting-up" ? (
                   <span
                     className="relative inline-flex h-2 w-2 shrink-0"
-                    title="Bike needs attention"
+                    title="Acting up — last ride showed symptoms"
                   >
                     <span
                       aria-hidden="true"
-                      className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#FFD700] opacity-75 motion-reduce:animate-none"
+                      className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75 motion-reduce:animate-none"
                     />
                     <span
                       aria-hidden="true"
-                      className="relative inline-flex h-2 w-2 rounded-full bg-[#FFD700]"
+                      className="relative inline-flex h-2 w-2 rounded-full bg-amber-400"
                     />
-                    <span className="sr-only">Bike needs attention</span>
+                    <span className="sr-only">Acting up on last ride</span>
+                  </span>
+                ) : bikeVerdict === "ran-clean" ? (
+                  <span
+                    className="relative inline-flex h-2 w-2 shrink-0"
+                    title="Ran clean on last ride"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="inline-flex h-2 w-2 rounded-full bg-emerald-400"
+                    />
+                    <span className="sr-only">Ran clean</span>
+                  </span>
+                ) : (
+                  <span
+                    className="relative inline-flex h-2 w-2 shrink-0"
+                    title="Untested — take a ride"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="inline-flex h-2 w-2 rounded-full bg-cyan-400/75"
+                    />
+                    <span className="sr-only">Untested</span>
                   </span>
                 )}
               </span>
@@ -428,7 +487,7 @@ export function SimulatorRoot() {
                 {save.rep} REP
               </div>
 
-              {!isRiding &&
+              {!hideChrome &&
                 (confirmingReset ? (
                   <div className="flex items-center gap-1.5 border-2 border-red-500 bg-red-950/70 px-2 py-1">
                     <span className="text-[10px] font-black uppercase text-red-200">
@@ -468,7 +527,7 @@ export function SimulatorRoot() {
           </div>
 
           {/* Phase Switcher Tabs */}
-          {!isRiding ? (
+          {!hideChrome ? (
             <nav
               aria-label="Simulator sections"
               className="mt-3 flex flex-wrap gap-2 border-t border-zinc-800 pt-3"
@@ -500,9 +559,11 @@ export function SimulatorRoot() {
           ) : (
             <div className="mt-3 flex items-center justify-between border-t border-zinc-800 pt-2 text-xs font-black uppercase tracking-widest text-[#FFD700]">
               <span>
-                {phase === "ROADSIDE"
-                  ? "ROADSIDE BREAKDOWN — PEDAL HOME OR CALL TOW"
-                  : "ON THE ROAD — LISTEN FOR SYMPTOMS"}
+                {runnerPlaying
+                  ? "STREET RUNNER — DODGE OAKLAND TRAFFIC"
+                  : phase === "ROADSIDE"
+                    ? "ROADSIDE BREAKDOWN — PEDAL HOME OR CALL TOW"
+                    : "ON THE ROAD — LISTEN FOR SYMPTOMS"}
               </span>
               <span className="text-zinc-400">{bike.nickname}</span>
             </div>

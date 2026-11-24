@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   Award,
   BookOpen,
   CheckCircle2,
+  ClipboardList,
   Droplets,
   Eye,
   Flame,
@@ -13,13 +14,23 @@ import {
   Lock,
   MapPin,
   Minus,
+  Play,
   Plus,
   Power,
+  RotateCcw,
   ShoppingBag,
   Sparkles,
+  Square,
+  Volume2,
+  VolumeX,
   Wrench,
+  X,
   Zap,
 } from "lucide-react";
+import {
+  PulseSynth,
+  loadSimMutedPreference,
+} from "@/lib/simulator/audio/pulse-synth";
 import type {
   HotspotId,
   PartSlot,
@@ -33,7 +44,11 @@ import {
   PARTS_CATALOG,
   SERVICEABLE_SLOTS,
 } from "@/lib/simulator/economy/catalog";
-import { getActiveBike, useSimStore } from "@/lib/simulator/store/sim-store";
+import {
+  getActiveBike,
+  simStore,
+  useSimStore,
+} from "@/lib/simulator/store/sim-store";
 import { MopedWorkbench } from "./moped-workbench";
 import { PlugViewer } from "./plug-viewer";
 
@@ -81,11 +96,12 @@ export function GarageView() {
   const store = useSimStore();
   const {
     save,
+    standTest,
     selectedTool,
     lastToolReading,
     plugViewerColor,
     garageFuelDrip,
-    bikeNeedsAttention,
+    bikeVerdict,
     jetRange,
     selectBike,
     selectTool,
@@ -99,6 +115,10 @@ export function GarageView() {
     addPremixOil,
     cleanAirFilter,
     cleanCarburetor,
+    startStandTest,
+    stopStandTest,
+    setStandInput,
+    kickStandTest,
     setPhase,
   } = store;
 
@@ -109,9 +129,93 @@ export function GarageView() {
   const [rightBottomTab, setRightBottomTab] = useState<"journal" | "badges">(
     "journal",
   );
+  const [journalScope, setJournalScope] = useState<"bike" | "fleet">("bike");
+  const [workOrderDismissed, setWorkOrderDismissed] = useState(false);
+  const [blippingStand, setBlippingStand] = useState(false);
+  const [muted, setMuted] = useState(() => loadSimMutedPreference());
+  const synthRef = useRef<PulseSynth | null>(null);
+
+  const ensureSynth = useCallback(() => {
+    synthRef.current ??= new PulseSynth(loadSimMutedPreference());
+    synthRef.current.setPaused(false);
+    synthRef.current.unlock();
+    return synthRef.current;
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      synthRef.current?.destroy();
+      synthRef.current = null;
+    };
+  }, []);
+
+  const isStandActive = Boolean(standTest);
+  useEffect(() => {
+    if (!isStandActive) {
+      setBlippingStand(false);
+      synthRef.current?.update(null);
+      return;
+    }
+    const synth = ensureSynth();
+    const unsubEvents = simStore.subscribeEvents((ev) => {
+      synth.playEvent(ev);
+    });
+    let rafId = 0;
+    const tick = () => {
+      synth.update(simStore.getLatestStandSnapshot());
+      rafId = window.requestAnimationFrame(tick);
+    };
+    rafId = window.requestAnimationFrame(tick);
+
+    const onVisibility = () => {
+      synth.setPaused(document.hidden);
+    };
+    const onBlur = () => {
+      setBlippingStand(false);
+      setStandInput({ throttle: 0 });
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("blur", onBlur);
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      unsubEvents();
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("blur", onBlur);
+      synth.update(null);
+      setStandInput({ throttle: 0 });
+    };
+  }, [ensureSynth, isStandActive, setStandInput]);
+
+  useEffect(() => {
+    if (!isStandActive) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable ||
+          target.closest('[role="dialog"]'))
+      ) {
+        return;
+      }
+      if (e.key.toLowerCase() === "r") {
+        e.preventDefault();
+        ensureSynth();
+        kickStandTest();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [ensureSynth, isStandActive, kickStandTest]);
 
   const activeToolSpec = getToolById(selectedTool);
   const hasStethoscope = save.upgrades.includes("tool-stethoscope");
+  const hasTach = save.upgrades.includes("gauge-tach");
+  const hasChtGauge = save.upgrades.includes("gauge-cht");
 
   // Gather owned main jets (+ currently installed jet) sorted numerically
   const ownedJetsMap = new Map<number, string>();
@@ -131,6 +235,14 @@ export function GarageView() {
   const ownedJetSizes = Array.from(ownedJetsMap.keys()).sort((a, b) => a - b);
   const currentJetIndex = ownedJetSizes.indexOf(bike.tuning.mainJet);
 
+  const handleSetMainJet = (size: number) => {
+    const prev = bike.tuning.mainJet;
+    setMainJet(size);
+    if (size !== prev && ownedJetsMap.has(size)) {
+      ensureSynth().playGarage("jet-click");
+    }
+  };
+
   const handleStepJet = (delta: -1 | 1) => {
     if (ownedJetSizes.length <= 1) return;
     const baseIndex = currentJetIndex === -1 ? 0 : currentJetIndex;
@@ -140,18 +252,93 @@ export function GarageView() {
     );
     const nextSize = ownedJetSizes[nextIndex];
     if (typeof nextSize === "number" && nextSize !== bike.tuning.mainJet) {
-      setMainJet(nextSize);
+      handleSetMainJet(nextSize);
     }
+  };
+
+  const handleSetNeedleClip = (clip: 1 | 2 | 3 | 4 | 5) => {
+    setNeedleClip(clip);
+    ensureSynth().playGarage("jet-click");
+  };
+
+  const handleSetIdleScrew = (turns: number) => {
+    setIdleScrew(turns);
+    ensureSynth().playGarage("jet-click");
   };
 
   const handleStepIdleScrew = (delta: number) => {
     const next = Math.round((bike.tuning.idleScrew + delta) * 4) / 4;
     const clamped = Math.max(0.5, Math.min(3.0, next));
-    setIdleScrew(clamped);
+    handleSetIdleScrew(clamped);
+  };
+
+  const handleToggleKillSwitch = () => {
+    toggleKillSwitch();
+    ensureSynth().playGarage("switch-flip");
+  };
+
+  const handleInstallPart = (partId: string) => {
+    if (!installPart(partId)) return;
+    ensureSynth().playGarage("install");
+  };
+
+  const handleHotspotClick = (hotspot: HotspotId) => {
+    const synth = ensureSynth();
+    const reading = runToolOnHotspot(hotspot);
+    if (!reading) return;
+    const spec = getToolById(reading.tool);
+    if (!spec?.validHotspots.includes(hotspot)) return;
+    if (reading.tool === "plug-chop") {
+      synth.playGarage("plug-pull");
+    } else if (reading.tool === "carb-spray") {
+      synth.playGarage("carb-spray");
+    } else if (reading.tool === "compression-gauge") {
+      synth.playGarage("compression-kick");
+    } else if (reading.tool === "spark-tester") {
+      synth.playGarage("spark-snap", { sparkQuality: reading.sparkQuality });
+    }
+  };
+
+  const handleToggleMute = () => {
+    const synth = ensureSynth();
+    setMuted(synth.toggleMute());
   };
 
   const effectivePlugColor = plugViewerColor ?? localPlugPreview;
   const recentJournal = [...save.journal].reverse();
+  const bikeById = new Map(save.bikes.map((b) => [b.id, b]));
+  const visibleJournal =
+    journalScope === "bike"
+      ? recentJournal.filter((j) => j.bikeId === bike.id)
+      : recentJournal;
+
+  const workOrderSteps = [
+    {
+      id: "ride",
+      label: "Take a shakedown ride",
+      done: save.stats.totalRides >= 1,
+    },
+    {
+      id: "tool",
+      label: "Run a diagnostic tool in the garage",
+      done: save.journal.some((j) => j.category === "tool"),
+    },
+    {
+      id: "wrench",
+      label: "Wrench or tune a part",
+      done: save.stats.totalFixes >= 1 || bike.tuning.mainJet !== 72,
+    },
+    {
+      id: "clear",
+      label: "Fix a problem or clear a route",
+      done:
+        save.badges.some((b) => b.id === "first-fix") ||
+        save.completedRoutes.length >= 1,
+    },
+  ];
+  const workOrderCompletedCount = workOrderSteps.filter((s) => s.done).length;
+  const showWorkOrder =
+    !workOrderDismissed && workOrderCompletedCount < workOrderSteps.length;
 
   // Count hardware spares in the toolbox that fit the active bike (excluding main jets)
   const hardwareSparesCount = save.inventory.reduce((count, partId) => {
@@ -232,6 +419,56 @@ export function GarageView() {
           </button>
         </div>
       </div>
+
+      {/* Onboarding Garage Work Order */}
+      {showWorkOrder && (
+        <section
+          aria-label="Garage work order checklist"
+          className="border-4 border-cyan-400 bg-zinc-950 p-3.5 shadow-[4px_4px_0px_0px_#000]"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <ClipboardList
+                className="h-4 w-4 text-cyan-300"
+                aria-hidden="true"
+              />
+              <h2 className="text-xs font-black uppercase tracking-wider text-cyan-300">
+                Garage Work Order ({workOrderCompletedCount}/4)
+              </h2>
+            </div>
+            <button
+              type="button"
+              onClick={() => setWorkOrderDismissed(true)}
+              aria-label="Dismiss garage work order"
+              className="border border-zinc-700 bg-black p-1 text-zinc-400 hover:border-cyan-400 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+            >
+              <X className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
+          </div>
+          <div className="mt-2.5 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            {workOrderSteps.map((step, idx) => (
+              <div
+                key={step.id}
+                className={`flex items-center gap-2 border-2 px-2.5 py-1.5 text-xs font-bold ${
+                  step.done
+                    ? "border-emerald-500/70 bg-emerald-950/40 text-emerald-200 line-through opacity-80"
+                    : "border-zinc-800 bg-black text-zinc-200"
+                }`}
+              >
+                <CheckCircle2
+                  className={`h-3.5 w-3.5 shrink-0 ${
+                    step.done ? "text-emerald-400" : "text-zinc-600"
+                  }`}
+                  aria-hidden="true"
+                />
+                <span>
+                  {idx + 1}. {step.label}
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Main 2-Column Garage Workspace */}
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
@@ -326,12 +563,209 @@ export function GarageView() {
             bike={bike}
             selectedTool={selectedTool}
             garageFuelDrip={garageFuelDrip}
-            bikeNeedsAttention={bikeNeedsAttention}
+            bikeVerdict={bikeVerdict}
+            standTest={standTest}
             lastHotspot={lastToolReading?.hotspot ?? null}
-            onHotspotClick={(hotspot) => {
-              runToolOnHotspot(hotspot);
-            }}
+            onHotspotClick={handleHotspotClick}
           />
+
+          {/* 2b. Fire It Up! Center-Stand Test Strip */}
+          <section
+            aria-label="Center stand engine test"
+            className="border-4 border-[#FFD700] bg-zinc-950 p-3.5 shadow-[4px_4px_0px_0px_#000]"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Flame
+                  className={`h-4 w-4 ${
+                    standTest?.engineRunning
+                      ? "animate-pulse text-emerald-400"
+                      : "text-[#FFD700]"
+                  }`}
+                  aria-hidden="true"
+                />
+                <h2
+                  className="text-sm font-bold uppercase tracking-wider text-[#FFD700]"
+                  style={{
+                    fontFamily:
+                      "var(--font-russo-one), 'Russo One', sans-serif",
+                  }}
+                >
+                  Fire It Up (Center Stand)
+                </h2>
+                {standTest && (
+                  <span
+                    className={`border px-2 py-0.5 text-[10px] font-black uppercase ${
+                      standTest.engineRunning
+                        ? "border-emerald-400 bg-emerald-950/70 text-emerald-200"
+                        : "border-orange-400 bg-orange-950/60 text-orange-200"
+                    }`}
+                  >
+                    {standTest.engineRunning ? "RUNNING" : "STALLED / OFF"}
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleToggleMute}
+                  aria-label={muted ? "Unmute garage audio" : "Mute garage audio"}
+                  className="border-2 border-zinc-700 bg-black p-1.5 text-zinc-200 hover:border-[#FFD700] hover:text-[#FFD700] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700]"
+                >
+                  {muted ? (
+                    <VolumeX className="h-4 w-4 text-red-400" aria-hidden="true" />
+                  ) : (
+                    <Volume2 className="h-4 w-4 text-[#FFD700]" aria-hidden="true" />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    ensureSynth();
+                    if (standTest) {
+                      stopStandTest();
+                    } else {
+                      startStandTest();
+                    }
+                  }}
+                  className={`inline-flex items-center gap-1.5 border-2 px-3 py-1.5 text-xs font-black uppercase tracking-wider transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] ${
+                    standTest
+                      ? "border-red-500 bg-red-950 text-red-100 hover:bg-red-900"
+                      : "border-[#FFD700] bg-[#FFD700] text-black hover:bg-yellow-300"
+                  }`}
+                >
+                  {standTest ? (
+                    <>
+                      <Square className="h-3.5 w-3.5 fill-current" aria-hidden="true" />
+                      Kill Stand Test
+                    </>
+                  ) : (
+                    <>
+                      <Play className="h-3.5 w-3.5 fill-current" aria-hidden="true" />
+                      Start Stand Test
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {standTest ? (
+              <div className="mt-3 space-y-2.5 border-t border-zinc-800 pt-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      ensureSynth();
+                      kickStandTest();
+                    }}
+                    disabled={standTest.engineRunning || standTest.seizedHard}
+                    className="inline-flex items-center gap-1.5 border-2 border-black bg-[#FFD700] px-3 py-2 text-xs font-black uppercase text-black shadow-[2px_2px_0px_#FFF] hover:bg-yellow-300 disabled:cursor-not-allowed disabled:border-zinc-700 disabled:bg-zinc-900 disabled:text-zinc-500 disabled:shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700]"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+                    Kick [R]
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      ensureSynth();
+                      setStandInput({ choke: !standTest.choke });
+                    }}
+                    aria-pressed={standTest.choke}
+                    className={`border-2 px-3 py-2 text-xs font-black uppercase transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] ${
+                      standTest.choke
+                        ? "border-cyan-400 bg-cyan-400 text-black"
+                        : "border-zinc-700 bg-black text-zinc-200 hover:border-cyan-400"
+                    }`}
+                  >
+                    Choke: {standTest.choke ? "ON" : "OFF"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onContextMenu={(e) => e.preventDefault()}
+                    onPointerDown={(e) => {
+                      e.stopPropagation();
+                      ensureSynth();
+                      try {
+                        e.currentTarget.setPointerCapture(e.pointerId);
+                      } catch {
+                        // ignore synthetic event
+                      }
+                      setBlippingStand(true);
+                      setStandInput({ throttle: 0.75 });
+                    }}
+                    onPointerUp={() => {
+                      setBlippingStand(false);
+                      setStandInput({ throttle: 0 });
+                    }}
+                    onPointerCancel={() => {
+                      setBlippingStand(false);
+                      setStandInput({ throttle: 0 });
+                    }}
+                    onLostPointerCapture={() => {
+                      setBlippingStand(false);
+                      setStandInput({ throttle: 0 });
+                    }}
+                    className={`touch-none border-2 px-4 py-2 text-xs font-black uppercase transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] ${
+                      blippingStand
+                        ? "border-emerald-400 bg-emerald-400 text-black"
+                        : "border-[#FFD700] bg-black text-[#FFD700] hover:bg-[#FFD700]/15"
+                    }`}
+                  >
+                    Hold: Blip Throttle
+                  </button>
+
+                  <div className="ml-auto flex flex-wrap items-center gap-2">
+                    {hasTach && (
+                      <div
+                        className="border-2 border-zinc-700 bg-black px-2.5 py-1 text-xs font-black text-cyan-300 tabular-nums"
+                        style={{
+                          fontFamily:
+                            "var(--font-orbitron), Orbitron, monospace",
+                        }}
+                      >
+                        {Math.round(standTest.rpm)} RPM
+                      </div>
+                    )}
+                    {hasChtGauge && (
+                      <div
+                        className={`border-2 bg-black px-2.5 py-1 text-xs font-black tabular-nums ${
+                          standTest.chtC >= 190
+                            ? "border-red-500 text-red-300"
+                            : "border-zinc-700 text-orange-300"
+                        }`}
+                        style={{
+                          fontFamily:
+                            "var(--font-orbitron), Orbitron, monospace",
+                        }}
+                      >
+                        {Math.round(standTest.chtC)}&deg;C
+                      </div>
+                    )}
+                    {!hasTach && !hasChtGauge && (
+                      <span className="border border-zinc-800 bg-black px-2.5 py-1 text-[11px] font-bold uppercase text-zinc-300">
+                        Rev it &amp; listen!
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {standTest.captions.length > 0 && (
+                  <p className="border border-zinc-800 bg-black px-2.5 py-1.5 text-xs font-bold text-[#FFD700]">
+                    {standTest.captions[standTest.captions.length - 1]?.text}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="mt-1.5 text-xs text-zinc-400">
+                Prop the bike on the center stand, kick it over, flip the choke,
+                and blip the throttle to hear rich four-stroking, air-leak idle
+                hunting, or crisp 2-stroke braaap before you roll out.
+              </p>
+            )}
+          </section>
 
           {/* 3. Live Diagnostic Readout Card */}
           <section
@@ -631,7 +1065,7 @@ export function GarageView() {
                     <button
                       key={size}
                       type="button"
-                      onClick={() => setMainJet(size)}
+                      onClick={() => handleSetMainJet(size)}
                       aria-pressed={active}
                       className={`border-2 px-2.5 py-1 text-xs font-black tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] ${
                         active
@@ -673,7 +1107,7 @@ export function GarageView() {
                       <button
                         key={clip}
                         type="button"
-                        onClick={() => setNeedleClip(clip)}
+                        onClick={() => handleSetNeedleClip(clip)}
                         aria-pressed={active}
                         aria-label={`Set needle clip position ${clip}`}
                         className={`border-2 py-1.5 text-xs font-black transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] ${
@@ -723,7 +1157,7 @@ export function GarageView() {
                     step={0.25}
                     value={bike.tuning.idleScrew}
                     onChange={(e) =>
-                      setIdleScrew(Number.parseFloat(e.target.value))
+                      handleSetIdleScrew(Number.parseFloat(e.target.value))
                     }
                     aria-label="Idle air screw turns out"
                     className="h-2 w-full cursor-pointer accent-[#FFD700]"
@@ -749,7 +1183,7 @@ export function GarageView() {
             <div className="mt-3 grid grid-cols-2 gap-2">
               <button
                 type="button"
-                onClick={toggleKillSwitch}
+                onClick={handleToggleKillSwitch}
                 aria-pressed={bike.tuning.killSwitchOn}
                 title={
                   bike.tuning.killSwitchOn
@@ -906,7 +1340,7 @@ export function GarageView() {
                             <button
                               key={swap.id}
                               type="button"
-                              onClick={() => installPart(swap.id)}
+                              onClick={() => handleInstallPart(swap.id)}
                               className="border border-[#FFD700]/70 bg-[#FFD700]/10 px-2 py-0.5 text-[10px] font-black uppercase text-[#FFD700] transition-colors hover:bg-[#FFD700] hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700]"
                             >
                               {swap.id === installedId ? "Install Fresh" : "Swap"}:{" "}
@@ -928,71 +1362,122 @@ export function GarageView() {
             aria-label="Mechanic's journal and badges"
             className="border-4 border-zinc-700 bg-zinc-950 p-4"
           >
-            <div className="mb-3 flex items-center gap-2 border-b-2 border-zinc-800 pb-2">
-              <button
-                type="button"
-                onClick={() => setRightBottomTab("journal")}
-                aria-pressed={rightBottomTab === "journal"}
-                className={`inline-flex items-center gap-1.5 border-2 px-3 py-1 text-xs font-black uppercase transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] ${
-                  rightBottomTab === "journal"
-                    ? "border-[#FFD700] bg-[#FFD700] text-black"
-                    : "border-zinc-700 bg-black text-zinc-300 hover:border-[#FFD700]"
-                }`}
-              >
-                <BookOpen className="h-3.5 w-3.5" aria-hidden="true" />
-                Journal ({save.journal.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setRightBottomTab("badges")}
-                aria-pressed={rightBottomTab === "badges"}
-                className={`inline-flex items-center gap-1.5 border-2 px-3 py-1 text-xs font-black uppercase transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] ${
-                  rightBottomTab === "badges"
-                    ? "border-[#FFD700] bg-[#FFD700] text-black"
-                    : "border-zinc-700 bg-black text-zinc-300 hover:border-[#FFD700]"
-                }`}
-              >
-                <Award className="h-3.5 w-3.5" aria-hidden="true" />
-                Badges ({save.badges.length})
-              </button>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b-2 border-zinc-800 pb-2">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setRightBottomTab("journal")}
+                  aria-pressed={rightBottomTab === "journal"}
+                  className={`inline-flex items-center gap-1.5 border-2 px-3 py-1 text-xs font-black uppercase transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] ${
+                    rightBottomTab === "journal"
+                      ? "border-[#FFD700] bg-[#FFD700] text-black"
+                      : "border-zinc-700 bg-black text-zinc-300 hover:border-[#FFD700]"
+                  }`}
+                >
+                  <BookOpen className="h-3.5 w-3.5" aria-hidden="true" />
+                  Journal ({visibleJournal.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRightBottomTab("badges")}
+                  aria-pressed={rightBottomTab === "badges"}
+                  className={`inline-flex items-center gap-1.5 border-2 px-3 py-1 text-xs font-black uppercase transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] ${
+                    rightBottomTab === "badges"
+                      ? "border-[#FFD700] bg-[#FFD700] text-black"
+                      : "border-zinc-700 bg-black text-zinc-300 hover:border-[#FFD700]"
+                  }`}
+                >
+                  <Award className="h-3.5 w-3.5" aria-hidden="true" />
+                  Badges ({save.badges.length})
+                </button>
+              </div>
+
+              {rightBottomTab === "journal" && (
+                <div
+                  role="group"
+                  aria-label="Filter journal entries"
+                  className="inline-flex border border-zinc-700 bg-black p-0.5 text-[10px] font-black uppercase"
+                >
+                  <button
+                    type="button"
+                    onClick={() => setJournalScope("bike")}
+                    aria-pressed={journalScope === "bike"}
+                    className={`px-2 py-0.5 transition-colors ${
+                      journalScope === "bike"
+                        ? "bg-[#FFD700] text-black"
+                        : "text-zinc-400 hover:text-white"
+                    }`}
+                  >
+                    This Bike
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setJournalScope("fleet")}
+                    aria-pressed={journalScope === "fleet"}
+                    className={`px-2 py-0.5 transition-colors ${
+                      journalScope === "fleet"
+                        ? "bg-[#FFD700] text-black"
+                        : "text-zinc-400 hover:text-white"
+                    }`}
+                  >
+                    All Fleet
+                  </button>
+                </div>
+              )}
             </div>
 
             {rightBottomTab === "journal" ? (
               <div className="max-h-60 space-y-2 overflow-y-auto pr-1">
-                {recentJournal.length === 0 ? (
+                {visibleJournal.length === 0 ? (
                   <p className="text-xs text-zinc-400">
-                    Your mechanic&apos;s notes will appear here as you ride and
-                    diagnose symptoms.
+                    {journalScope === "bike"
+                      ? `No mechanic's notes for ${bike.nickname} yet. Ride or run a tool to log observations.`
+                      : "Your mechanic's notes will appear here as you ride and diagnose symptoms."}
                   </p>
                 ) : (
-                  recentJournal.map((entry) => (
-                    <article
-                      key={entry.id}
-                      className="border-l-4 border-zinc-700 bg-black px-3 py-2"
-                      style={{
-                        borderLeftColor:
-                          entry.category === "fix"
-                            ? "#34D399"
-                            : entry.category === "tool"
-                              ? "#22D3EE"
-                              : entry.category === "badge"
-                                ? "#FFD700"
-                                : "#F97316",
-                      }}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <h3 className="text-xs font-black uppercase text-white">
-                          {entry.title}
-                        </h3>
-                        <span className="text-[10px] font-bold uppercase text-zinc-500">
-                          {entry.category}
-                        </span>
-                      </div>
-                      <p className="mt-0.5 text-xs leading-relaxed text-zinc-300">
-                        {entry.body}
-                      </p>
-                    </article>
-                  ))
+                  visibleJournal.map((entry) => {
+                    const entryBike = bikeById.get(entry.bikeId);
+                    return (
+                      <article
+                        key={entry.id}
+                        className="border-l-4 border-zinc-700 bg-black px-3 py-2"
+                        style={{
+                          borderLeftColor:
+                            entry.category === "fix"
+                              ? "#34D399"
+                              : entry.category === "tool"
+                                ? "#22D3EE"
+                                : entry.category === "badge"
+                                  ? "#FFD700"
+                                  : "#F97316",
+                        }}
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5">
+                            {journalScope === "fleet" && entryBike && (
+                              <span className="inline-flex items-center gap-1 border border-zinc-700 bg-zinc-950 px-1.5 py-0.5 text-[9px] font-black uppercase text-zinc-300">
+                                <span
+                                  className="h-2 w-2 border border-white"
+                                  style={{ backgroundColor: entryBike.colorHex }}
+                                  aria-hidden="true"
+                                />
+                                {entryBike.nickname}
+                              </span>
+                            )}
+                            <h3 className="text-xs font-black uppercase text-white">
+                              {entry.title}
+                            </h3>
+                          </div>
+                          <span className="text-[10px] font-bold uppercase text-zinc-500">
+                            {entry.category}
+                          </span>
+                        </div>
+                        <p className="mt-0.5 text-xs leading-relaxed text-zinc-300">
+                          {entry.body}
+                        </p>
+                      </article>
+                    );
+                  })
                 )}
               </div>
             ) : (

@@ -1,5 +1,6 @@
 // East Bay ride missions for Ran When Parked.
 
+import { mulberry32, nextRange } from "../core/rng";
 import type { RouteId, RouteSegment, RouteSpec } from "../contract";
 
 export const ROUTES: RouteSpec[] = [
@@ -94,4 +95,49 @@ export function getRouteById(id: RouteId): RouteSpec | undefined {
 export function segmentAt(route: RouteSpec, distanceM: number): RouteSegment | undefined {
   const d = Math.max(0, Math.min(route.lengthM - 0.001, distanceM));
   return route.segments.find((s) => d >= s.startM && d < s.endM) ?? route.segments[route.segments.length - 1];
+}
+
+/** Par finish times (seconds) for the "speed" Route Medal. */
+export const ROUTE_PAR_SEC: Record<RouteId, number> = {
+  "telegraph-coffee": 155,
+  "lake-merritt-cruise": 165,
+  "grizzly-peak-climb": 160,
+  "midnight-tunnel": 135,
+};
+
+export interface RoutePothole {
+  positionM: number;
+  hit: boolean;
+}
+
+/**
+ * Deterministically lay out real pothole world positions along a route from
+ * each segment's `potholeDensity` (dense segments ≈ every 75 m, sparse ≈ 180 m).
+ * Uses its own PRNG stream so it never perturbs the ride's physics RNG.
+ */
+export function generatePotholes(route: RouteSpec, seed: number): RoutePothole[] {
+  let h = (seed ^ 0x5f3759df) >>> 0;
+  for (let i = 0; i < route.id.length; i++) h = Math.imul(h ^ route.id.charCodeAt(i), 16777619) >>> 0;
+  const rng = mulberry32(h || 1);
+  const stopZones = route.segments.filter((s) => s.hasStoplight).map((s) => s.endM - 15);
+  const out: RoutePothole[] = [];
+  let cursor = 45; // Give the rider a clean launch off the line
+  for (const seg of route.segments) {
+    const density = Math.max(0, Math.min(1, seg.potholeDensity));
+    if (density <= 0) {
+      cursor = Math.max(cursor, seg.endM);
+      continue;
+    }
+    // 0.05 → ~170 m spacing, 0.4+ → ~75 m spacing
+    const spacing = Math.max(75, Math.min(180, 183 - density * 270));
+    let pos = Math.max(cursor, seg.startM + nextRange(rng, 0.25, 0.85) * spacing);
+    while (pos < seg.endM && pos < route.lengthM - 25) {
+      // Keep the stoplight stop box clear so idle tests stay clean
+      const nearStop = stopZones.some((z) => Math.abs(pos - z) < 14);
+      if (!nearStop) out.push({ positionM: Math.round(pos * 10) / 10, hit: false });
+      pos += spacing * nextRange(rng, 0.8, 1.2);
+    }
+    cursor = pos;
+  }
+  return out;
 }

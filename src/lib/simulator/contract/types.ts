@@ -1,11 +1,14 @@
 import type {
+  BikeVerdict,
   FaultId,
   HotspotId,
   PartSlot,
   PlugColor,
   RouteId,
+  RouteMedal,
   ShopVendorId,
   SimBikeMake,
+  StallReason,
   ToolId,
   UpgradeId,
 } from "./ids";
@@ -100,9 +103,12 @@ export interface OwnedBike {
     clutchWear: number;
     fuelFilterClog: number;
     gasketWear: number;
+    airFilterDirt?: number;
   };
   /** Cached latest plug condition from last run / plug chop */
   lastPlugColor: PlugColor;
+  /** Road-tested verdict derived strictly from observable symptoms (never raw faults) */
+  verdict?: BikeVerdict;
   /** How many non-fixing swaps happened since current fault started ("Parts Cannon") */
   wrongSwapsStreak: number;
 }
@@ -196,6 +202,13 @@ export interface RideInput {
   kickstartPulse: boolean; // Tap to kickstart when stalled
 }
 
+export interface StandTestInput {
+  throttle: number; // 0..1
+  choke: boolean;
+  killSwitch: boolean;
+  kickstartPulse: boolean;
+}
+
 export interface ComicCaption {
   id: number;
   text: string;
@@ -211,8 +224,9 @@ export type SimEvent =
   | { type: "seize-start" }
   | { type: "seize-saved" }
   | { type: "seize-crash" }
-  | { type: "stalled"; reason: "fuel" | "spark" | "idle" | "plug-chop" }
+  | { type: "stalled"; reason: Exclude<StallReason, "none"> }
   | { type: "kickstart"; started: boolean; compressionFeel: "strong" | "weak" }
+  | { type: "gear-shift"; gear: 1 | 2 }
   | { type: "pothole-bump" }
   | { type: "mission-complete"; cash: number; rep: number; bonusText?: string }
   | { type: "badge-earned"; badgeId: string; title: string; description: string };
@@ -229,6 +243,8 @@ export interface RideSummary {
   towCost: number;
   plugChopCaptured: boolean;
   notes: string[];
+  medalsEarned?: RouteMedal[];
+  newMedals?: RouteMedal[];
 }
 
 export type RunnerEndReason = "crashed" | "seized" | "stalled" | "aborted";
@@ -240,6 +256,8 @@ export interface RunnerRunSummary {
   score: number;
   distanceM: number;
   topSpeedMph: number;
+  /** True engine top speed excluding Treatland turbo boost */
+  engineTopSpeedMph?: number;
   maxChtC: number;
   maxCombo: number;
   wheelieClears: number;
@@ -249,6 +267,8 @@ export interface RunnerRunSummary {
   endReason: RunnerEndReason;
   cashEarned: number;
   repEarned: number;
+  cleanTuneBonus?: boolean;
+  isNewBestDistance?: boolean;
   notes: string[];
 }
 
@@ -272,7 +292,7 @@ export interface PlayerBadge {
 // ── PERSISTENT SAVE STATE ─────────────────────────────────────────────────
 
 export interface SimSaveState {
-  version: 1;
+  version: 1 | 2;
   seed: number;
   cash: number;
   rep: number;
@@ -281,6 +301,8 @@ export interface SimSaveState {
   inventory: string[]; // Owned part IDs in toolbox
   upgrades: UpgradeId[]; // Owned instruments/tools
   completedRoutes: RouteId[];
+  routeMedals?: Partial<Record<RouteId, RouteMedal[]>>;
+  runnerBestDistanceM?: number;
   journal: JournalEntry[];
   badges: PlayerBadge[];
   stats: {

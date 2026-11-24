@@ -7,14 +7,18 @@
 //
 // The engine never exposes fault IDs — only physical consequences.
 
-import { type Rng, chance } from "../core/rng";
+import { type Rng, chance, mulberry32 } from "../core/rng";
 import type {
+  ComicCaption,
   MisfirePattern,
   OwnedBike,
   PlugColor,
+  RideTelemetrySnapshot,
   SimBikeMake,
   SimEvent,
   SmokeTint,
+  StallReason,
+  StandTestInput,
 } from "../contract";
 import { getIdealJetForBike, getPartById } from "../economy/catalog";
 import { type FaultEffects, getFaultEffects } from "../faults/catalog";
@@ -31,6 +35,48 @@ export const SEIZE_CHT_C = 225;
 export const SEIZE_CLUTCH_WINDOW_MS = 1500;
 /** CHT below which a seized-then-saved piston has shrunk enough to kick over. */
 export const SEIZE_RESTART_CHT_C = 180;
+
+// ── DRIVETRAINS (G6 — authentic make identity) ─────────────────────────────
+
+/**
+ * - `single`: Puch Maxi E50 — one fixed reduction (ratio 1 = RPM_PER_MPS).
+ * - `cvt`: Honda Hobbit / Derbi Variant — a belt variator that slides from a
+ *   short launch ratio toward overdrive to hold the engine near the pipe.
+ * - `two-speed`: Tomos A35 — a real 2-speed automatic that clicks into 2nd.
+ */
+export type DrivetrainKind = "single" | "cvt" | "two-speed";
+
+export const DRIVETRAIN_BY_MAKE: Record<SimBikeMake, DrivetrainKind> = {
+  "puch-maxi": "single",
+  "honda-hobbit": "cvt",
+  "derbi-variant": "cvt",
+  "tomos-a35": "two-speed",
+};
+
+/** Variator launch ratio (× RPM_PER_MPS). */
+export const CVT_LOW_RATIO = 1.38;
+/** Variator overdrive ratio (× RPM_PER_MPS). */
+export const CVT_HIGH_RATIO = 0.88;
+/** Tomos A35 gear ratios (× RPM_PER_MPS). */
+export const TWO_SPEED_RATIOS: Record<1 | 2, number> = { 1: 1.32, 2: 0.94 };
+/** Tomos 1→2 upshift road speed (~17.5 mph). */
+export const TWO_SPEED_UPSHIFT_MPS = 7.8;
+/** Tomos 2→1 downshift road speed (hysteresis). */
+export const TWO_SPEED_DOWNSHIFT_MPS = 5.6;
+/** Length of the torque "kick" right after the Tomos snaps into 2nd. */
+const SHIFT_KICK_SEC = 0.3;
+
+/** Dirty air filter starts choking airflow above this much dirt (0..100). */
+export const AIR_FILTER_DIRT_THRESHOLD = 45;
+/** Extra richness from a fully clogged (100) air filter. */
+const AIR_FILTER_MAX_RICHEN = 0.12;
+
+/** Richness multiplier from a dusty air filter (1 = clean). */
+export function airFilterRichenFor(dirt: number | undefined): number {
+  const d = clamp(dirt ?? 0, 0, 100);
+  if (d <= AIR_FILTER_DIRT_THRESHOLD) return 1;
+  return 1 + AIR_FILTER_MAX_RICHEN * ((d - AIR_FILTER_DIRT_THRESHOLD) / (100 - AIR_FILTER_DIRT_THRESHOLD));
+}
 
 // ── BIKE PROFILE ───────────────────────────────────────────────────────────
 
@@ -59,6 +105,10 @@ export interface BikeProfile {
   plugFoulRateMult: number;
   exhaustVisual: "stock" | "performance" | "race";
   cylinderVisual: "stock" | "performance" | "race";
+  airFilterVisual: "stock" | "performance" | "race";
+  drivetrain: DrivetrainKind;
+  /** Richness multiplier from a dusty air filter (1 = clean). */
+  airFilterRichen: number;
   effects: FaultEffects;
 }
 
@@ -66,7 +116,8 @@ const MAKE_BASE: Record<
   SimBikeMake,
   { maxRpm: number; torque: number; mass: number; cdA: number; idle: number }
 > = {
-  "puch-maxi": { maxRpm: 7200, torque: 2.3, mass: 50, cdA: 0.62, idle: 1500 },
+  // Crisp single-speed E50: the strongest bottom end of the bunch.
+  "puch-maxi": { maxRpm: 7200, torque: 2.45, mass: 50, cdA: 0.62, idle: 1500 },
   "honda-hobbit": { maxRpm: 7100, torque: 2.25, mass: 55, cdA: 0.6, idle: 1600 },
   "derbi-variant": { maxRpm: 7300, torque: 2.35, mass: 52, cdA: 0.61, idle: 1550 },
   "tomos-a35": { maxRpm: 7300, torque: 2.3, mass: 48, cdA: 0.62, idle: 1500 },
@@ -113,6 +164,7 @@ export function buildBikeProfile(bike: OwnedBike): BikeProfile {
   const band = PIPE_BAND[bike.parts.exhaust] ?? PIPE_BAND["pipe-stock-maxi"]!;
   const exhaust = getPartById(bike.parts.exhaust);
   const cylinder = getPartById(bike.parts.cylinder);
+  const airFilter = getPartById(bike.parts["air-filter"]);
   const kitted = cylId !== "cyl-stock-50";
 
   return {
@@ -138,6 +190,9 @@ export function buildBikeProfile(bike: OwnedBike): BikeProfile {
     plugFoulRateMult: bike.parts["spark-plug"] === "plug-ngk-b7hs" && !kitted ? 1.6 : 1,
     exhaustVisual: exhaust?.visualTag ?? "stock",
     cylinderVisual: cylinder?.visualTag ?? "stock",
+    airFilterVisual: airFilter?.visualTag ?? "stock",
+    drivetrain: DRIVETRAIN_BY_MAKE[bike.make] ?? "single",
+    airFilterRichen: airFilterRichenFor(bike.wear.airFilterDirt),
     effects: getFaultEffects(bike),
   };
 }
@@ -183,6 +238,9 @@ export function computeMixture(profile: BikeProfile, m: MixtureInputs): number {
   // Intake air leak: idle vacuum pulls in extra air.
   const vacuum = 1 - thr;
   mix /= 1 + profile.effects.airLeak * (0.42 * vacuum + 0.07);
+
+  // Dusty air filter restricts airflow → richer across the board.
+  mix *= profile.airFilterRichen;
 
   // Cold engine: fuel doesn't atomize well (needs choke).
   if (m.chtC < 40) mix *= 0.92;
@@ -276,7 +334,7 @@ function fuelDemand(profile: BikeProfile, throttle: number, rpmFrac: number, mix
 
 // ── ENGINE STATE ───────────────────────────────────────────────────────────
 
-export type StallReason = "none" | "fuel" | "spark" | "idle" | "plug-chop";
+export type { StallReason };
 
 export interface EngineState {
   running: boolean;
@@ -318,6 +376,16 @@ export interface EngineState {
   wheelLocked: boolean;
   /** Oscillator phase for air-leak idle hunting (deterministic, no wall clock). */
   huntPhase: number;
+
+  // Drivetrain
+  /** Active gear (always 1 except the Tomos A35 2-speed in 2nd). */
+  currentGear: 1 | 2;
+  /** True only on the step the 2-speed changed gear. */
+  gearShiftPulse: boolean;
+  /** Effective drive ratio (× RPM_PER_MPS) — fixed, gear, or variator position. */
+  gearRatio: number;
+  /** Remaining seconds of the post-upshift torque kick. */
+  shiftKickSec: number;
 
   // Ride stats
   maxChtC: number;
@@ -366,6 +434,10 @@ export function createEngineState(profile: BikeProfile, ambientC = AMBIENT_C): E
     driveForceN: 0,
     wheelLocked: false,
     huntPhase: 0,
+    currentGear: 1,
+    gearShiftPulse: false,
+    gearRatio: initialGearRatio(profile),
+    shiftKickSec: 0,
     maxChtC: ambientC + 5,
     detonations: 0,
     richSec: 0,
@@ -377,6 +449,61 @@ export function createEngineState(profile: BikeProfile, ambientC = AMBIENT_C): E
     seizeCrashes: 0,
     plugFoulGain: 0,
   };
+}
+
+function initialGearRatio(profile: BikeProfile): number {
+  if (profile.drivetrain === "cvt") return CVT_LOW_RATIO;
+  if (profile.drivetrain === "two-speed") return TWO_SPEED_RATIOS[1];
+  return 1;
+}
+
+/**
+ * Advance the drivetrain: Tomos 2-speed shift logic (with hysteresis) or the
+ * variator sliding to hold the pipe. Mutates `s`; emits gear-shift events.
+ */
+function updateDrivetrain(
+  s: EngineState,
+  profile: BikeProfile,
+  throttle: number,
+  speed: number,
+  dt: number,
+  events: SimEvent[],
+): void {
+  s.shiftKickSec = Math.max(0, s.shiftKickSec - dt);
+  switch (profile.drivetrain) {
+    case "two-speed": {
+      if (s.currentGear === 1 && speed >= TWO_SPEED_UPSHIFT_MPS && s.running) {
+        s.currentGear = 2;
+        // Revs drop as the taller gear catches.
+        s.rpm *= TWO_SPEED_RATIOS[2] / TWO_SPEED_RATIOS[1];
+        s.gearShiftPulse = true;
+        s.shiftKickSec = SHIFT_KICK_SEC;
+        events.push({ type: "gear-shift", gear: 2 });
+      } else if (s.currentGear === 2 && speed <= TWO_SPEED_DOWNSHIFT_MPS) {
+        s.currentGear = 1;
+        if (s.running) {
+          s.gearShiftPulse = true;
+          events.push({ type: "gear-shift", gear: 1 });
+        }
+      }
+      s.gearRatio = TWO_SPEED_RATIOS[s.currentGear];
+      return;
+    }
+    case "cvt": {
+      s.currentGear = 1;
+      // Under load the variator holds the pipe; off-throttle it lets revs settle.
+      const load = smoothstep(0.08, 0.8, throttle);
+      const holdRpm = s.running ? lerp(profile.clutchEngageRpm + 300, profile.powerbandRpm, load) : 0;
+      const baseRpm = speed * RPM_PER_MPS;
+      const target =
+        !s.running || baseRpm < 1 ? CVT_LOW_RATIO : clamp(holdRpm / baseRpm, CVT_HIGH_RATIO, CVT_LOW_RATIO);
+      s.gearRatio = lerp(s.gearRatio, target, clamp(dt * 3, 0, 1));
+      return;
+    }
+    default:
+      s.currentGear = 1;
+      s.gearRatio = 1;
+  }
 }
 
 export interface EngineInput {
@@ -484,9 +611,12 @@ export function stepEngine(
   const e = profile.effects;
   const ambient = env.ambientC ?? AMBIENT_C;
   const speed = Math.max(0, env.speedMps);
-  const wheelRpm = speed * RPM_PER_MPS;
   s.detonationPulse = false;
+  s.gearShiftPulse = false;
   s.driveForceN = 0;
+  updateDrivetrain(s, profile, clamp(input.throttle, 0, 1), speed, dt, events);
+  const ratio = s.gearRatio;
+  const wheelRpm = speed * RPM_PER_MPS * ratio;
 
   // ── Seize reaction window ──
   if (s.seizeActive) {
@@ -551,7 +681,7 @@ export function stepEngine(
   const thr = clamp(input.throttle, 0, 1);
   const spark = effectiveSpark(profile);
 
-  // ── Kill switch held: plug chop at WOT ──
+  // ── Kill switch held: plug chop at WOT (or just a dead engine below it) ──
   if (input.killSwitch || spark <= 0) {
     if (input.killSwitch && thr >= 0.75) {
       s.plugChopHoldSec += dt;
@@ -566,6 +696,9 @@ export function stepEngine(
     if (input.killSwitch && thr >= 0.75) {
       s.plugChopColor = chopColor;
       stall(s, "plug-chop", events);
+    } else if (input.killSwitch) {
+      // Not wide open: the engine just dies — no clean plug read.
+      stall(s, "kill-switch", events);
     } else {
       stall(s, "spark", events);
     }
@@ -630,11 +763,15 @@ export function stepEngine(
   // Four-stroking (alternate) only skips some cycles; random/high-rpm misses hurt more.
   const missPenalty = s.misfirePattern === "alternate" ? 0.65 : 0.85;
   const combustion = eff * (1 - s.misfireRate * missPenalty) * compression;
-  const torque = profile.peakTorqueNm * shape * thrCurve * combustion;
+  // Tomos snapping into 2nd: a short, crisp shove.
+  const shiftKick = s.shiftKickSec > 0 ? 1 + 0.18 * (s.shiftKickSec / SHIFT_KICK_SEC) : 1;
+  const torque = profile.peakTorqueNm * shape * thrCurve * combustion * shiftKick;
 
   // ── RPM & clutch coupling ──
   const idleBoost = e.airLeak * 1300 * (1 - thr); // lean leak → high hunting idle
-  const idleTarget = profile.idleRpm + idleBoost + (input.choke ? 500 : 0);
+  // Idle air screw: more turns out = leaner idle = higher idle speed (no-op at 1.5).
+  const screwRpm = clamp((tuning.idleScrew - 1.5) * 320, -420, 480) * (1 - thr);
+  const idleTarget = profile.idleRpm + idleBoost + screwRpm + (input.choke ? 500 : 0);
   const freeTarget = idleTarget + thr * (profile.maxRpm * 1.04 - idleTarget) * clamp(combustion * 1.1, 0.3, 1);
   const stallRpm = profile.clutchEngageRpm + 1000 * thr; // centrifugal clutch "stall speed"
   const engaged = !input.clutch && (s.rpm > profile.clutchEngageRpm - 300 || wheelRpm > profile.clutchEngageRpm);
@@ -670,7 +807,7 @@ export function stepEngine(
   s.clutchSlip = engaged ? clamp(slipFrac * 1.6, 0, 1) : 0;
   if (engaged) {
     if (thr > 0.02) {
-      s.driveForceN = transmitted * FORCE_PER_NM;
+      s.driveForceN = transmitted * FORCE_PER_NM * ratio;
     } else if (wheelRpm > profile.clutchEngageRpm) {
       s.driveForceN = -18 * (wheelRpm / profile.maxRpm) * compression; // engine braking
     }
@@ -681,7 +818,9 @@ export function stepEngine(
 
   // ── Thermal ──
   const powerFrac = clamp((torque / profile.peakTorqueNm) * (s.rpm / profile.maxRpm), 0, 1.4);
-  let heat = 10 + 145 * powerFrac;
+  // Free-revving with the clutch out of the loop (center stand, lever pulled)
+  // makes far less heat than pulling real load.
+  let heat = 10 + 145 * powerFrac * (engaged ? 1 : 0.5);
   if (mix < 1) heat *= 1 + 2.2 * (1 - mix);
   else heat *= 1 - Math.min(0.3, (mix - 1) * 0.5);
   if (!e.premix) heat *= 1.12; // friction
@@ -739,6 +878,12 @@ export function stepEngine(
     stallRate += idleMix > 1.45 ? 0.08 : 0;
     stallRate += idleMix < 0.62 ? 0.06 : 0;
     stallRate += spark < 0.5 ? 0.03 : 0;
+    // Idle screw cranked way off its sweet spot starves or drowns the idle
+    // circuit. Stable band 0.75–2.5 turns; the slider ends (0.5 / 3.0) stall.
+    stallRate += Math.max(0, tuning.idleScrew - 2.5) * 0.8; // lean, starving idle
+    stallRate += Math.max(0, 0.75 - tuning.idleScrew) * 1.0; // rich, drowning idle
+    // Choke left on a warm engine floods it out.
+    stallRate += input.choke && s.chtC > 45 ? 0.35 : 0;
     if (stallRate > 0 && chance(rng, stallRate * dt)) {
       stall(s, "idle", events);
       return;
@@ -803,4 +948,222 @@ export function rideEndPlugColor(s: EngineState, profile: BikeProfile): PlugColo
     premix: e.premix,
     maxChtC: s.maxChtC,
   });
+}
+
+// ── GARAGE STAND TEST ("Fire it up!" on the center stand) ──────────────────
+//
+// Same engine model as the road, but the rear wheel is in the air: clutch out
+// of the loop (`clutch: true`) and zero road speed. Everything the player
+// hears/sees is emergent: a leak hangs a hunting idle, the idle screw moves
+// idle rpm (and stalls it when way off), choke helps a cold start and floods
+// a warm one, and blipping the throttle shows rich four-stroking vs a lean
+// rasp vs a crisp braap. The snapshot carries ZERO FaultIds.
+
+export interface StandTestOptions {
+  seed?: number;
+  hasTach?: boolean;
+  hasChtGauge?: boolean;
+  hasStethoscope?: boolean;
+  ambientC?: number;
+}
+
+export interface StandTestState {
+  bike: OwnedBike;
+  profile: BikeProfile;
+  engine: EngineState;
+  rng: Rng;
+  opts: Required<Omit<StandTestOptions, "seed">> & { seed: number };
+  input: StandTestInput;
+  elapsedSec: number;
+  captions: ComicCaption[];
+  captionSeq: number;
+  captionCooldowns: Record<string, number>;
+  /** Number of kicks attempted this session (for flavor captions). */
+  kicks: number;
+}
+
+export const NEUTRAL_STAND_INPUT: StandTestInput = {
+  throttle: 0,
+  choke: false,
+  killSwitch: false,
+  kickstartPulse: false,
+};
+
+export function createStandTest(bike: OwnedBike, opts: StandTestOptions = {}): StandTestState {
+  const profile = buildBikeProfile(bike);
+  const ambientC = opts.ambientC ?? AMBIENT_C;
+  const seed = (opts.seed ?? 0x5eed57a1) >>> 0;
+  return {
+    bike,
+    profile,
+    engine: createEngineState(profile, ambientC),
+    rng: mulberry32(seed),
+    opts: {
+      seed,
+      hasTach: opts.hasTach ?? false,
+      hasChtGauge: opts.hasChtGauge ?? false,
+      hasStethoscope: opts.hasStethoscope ?? false,
+      ambientC,
+    },
+    input: { ...NEUTRAL_STAND_INPUT },
+    elapsedSec: 0,
+    captions: [],
+    captionSeq: 1,
+    captionCooldowns: {},
+    kicks: 0,
+  };
+}
+
+/** Rebuild the profile after a garage change (idle screw, kill switch, parts…). */
+export function refreshStandBike(state: StandTestState, bike: OwnedBike): void {
+  state.bike = bike;
+  state.profile = buildBikeProfile(bike);
+}
+
+function standCaption(
+  state: StandTestState,
+  events: SimEvent[],
+  text: string,
+  tone: ComicCaption["tone"],
+  key: string,
+  cooldownSec = 6,
+): void {
+  const until = state.captionCooldowns[key] ?? -1;
+  if (state.elapsedSec < until) return;
+  state.captionCooldowns[key] = state.elapsedSec + cooldownSec;
+  const ttlMs = 2600;
+  state.captions.push({ id: state.captionSeq++, text, tone, ttlMs, maxTtlMs: ttlMs });
+  if (state.captions.length > 4) state.captions.shift();
+  events.push({ type: "caption", text, tone });
+}
+
+/**
+ * Advance the stand test by `dt` seconds. Consumes `input.kickstartPulse`.
+ * Returns the standard SimEvents emitted this step.
+ */
+export function stepStandTest(state: StandTestState, input: StandTestInput, dt: number): SimEvent[] {
+  const events: SimEvent[] = [];
+  const eng = state.engine;
+  const { profile, rng } = state;
+  const tuning = state.bike.tuning;
+  state.elapsedSec += dt;
+  state.input = { ...input, kickstartPulse: false };
+
+  for (const c of state.captions) c.ttlMs -= dt * 1000;
+  state.captions = state.captions.filter((c) => c.ttlMs > 0);
+
+  if (input.kickstartPulse && !eng.running && !eng.seizedHard) {
+    state.kicks += 1;
+    const started = attemptKickstart(eng, profile, tuning, input.choke, rng, events, input.killSwitch);
+    if (started) {
+      standCaption(state, events, "It catches! Braaap on the stand.", "gold", "stand-start", 8);
+    } else if (eng.seizeSavedPending && eng.chtC > SEIZE_RESTART_CHT_C) {
+      standCaption(state, events, "Cylinder's still scorching — let it cool.", "orange", "stand-hot", 4);
+    } else if (input.killSwitch || profile.effects.killSwitchOn) {
+      standCaption(state, events, "Kick, kick… not even a pop. Check the kill switch.", "orange", "stand-kill", 5);
+    } else if (eng.fuelBowlPct < 8) {
+      standCaption(state, events, "Kicking dry — the bowl's empty.", "orange", "stand-dry", 5);
+    } else if (state.kicks >= 3) {
+      standCaption(
+        state,
+        events,
+        eng.chtC < 40 ? "Won't catch cold… try the choke." : "Kick, kick… nothing. Hmm.",
+        "white",
+        "stand-fail",
+        5,
+      );
+    }
+  }
+
+  const wasRunning = eng.running;
+  stepEngine(
+    eng,
+    profile,
+    tuning,
+    {
+      throttle: clamp(input.throttle, 0, 1),
+      choke: input.choke,
+      clutch: true, // rear wheel in the air: no load through the clutch
+      killSwitch: input.killSwitch,
+      kickstart: false,
+    },
+    { speedMps: 0, ambientC: state.opts.ambientC },
+    dt,
+    rng,
+    events,
+  );
+  if (wasRunning && !eng.running && eng.stallReason === "idle" && input.choke && eng.chtC > 45) {
+    standCaption(state, events, "Choke on a warm engine — it flooded out.", "orange", "stand-flood", 6);
+  }
+  return events;
+}
+
+/** Observable-only telemetry for the workbench (same shape as a ride snapshot). */
+export function buildStandSnapshot(state: StandTestState): RideTelemetrySnapshot {
+  const eng = state.engine;
+  const p = state.profile;
+  const input = state.input;
+  return {
+    active: true,
+    routeId: "telegraph-coffee",
+    routeName: "Garage Stand Test",
+    timeOfDay: "golden",
+    bikeMake: state.bike.make,
+    bikeColorHex: state.bike.colorHex,
+    bikeAccentHex: state.bike.accentHex,
+    exhaustVisual: p.exhaustVisual,
+    cylinderVisual: p.cylinderVisual,
+    airFilterVisual: p.airFilterVisual,
+    distanceM: 0,
+    routeLengthM: 0,
+    speedMph: 0,
+    gradePct: 0,
+    landmark: null,
+    atStoplight: false,
+    stoplightRedSec: 0,
+    nextStoplightM: null,
+    nextStoplightState: null,
+    upcomingPotholesM: [],
+    nextPotholeM: null,
+    throttle: input.throttle,
+    brake: false,
+    tuck: false,
+    choke: input.choke,
+    clutchPulled: true,
+    pedaling: false,
+    stamina: 100,
+    engineRunning: eng.running,
+    rpm: eng.rpm,
+    maxRpm: p.maxRpm,
+    hasTach: state.opts.hasTach,
+    hasChtGauge: state.opts.hasChtGauge,
+    hasStethoscope: state.opts.hasStethoscope,
+    listenMode: false,
+    chtC: eng.chtC,
+    powerbandActive: false,
+    fuelBowlPct: eng.fuelBowlPct,
+    smoke: { density: eng.smokeDensity, tint: eng.smokeTint },
+    misfirePattern: eng.misfirePattern,
+    misfireRate: eng.misfireRate,
+    leanTone: eng.leanTone,
+    detonationPulse: eng.detonationPulse,
+    clutchSlip: 0,
+    pistonKnock: eng.pistonKnock,
+    compressionFeel: eng.compressionFeel,
+    stalled: eng.stalled,
+    stallReason: eng.stallReason,
+    seizeWarning: eng.seizeWarning,
+    seizeActive: eng.seizeActive,
+    seizeClutchWindowMs: eng.seizeActive ? Math.max(0, eng.seizeWindowMs) : 0,
+    seizedHard: eng.seizedHard,
+    seizeCooldownHot: eng.seizeSavedPending && eng.chtC > SEIZE_RESTART_CHT_C,
+    currentGear: eng.currentGear,
+    gearShiftPulse: eng.gearShiftPulse,
+    pedalingHome: false,
+    pedalHomeRemainingM: 0,
+    coffeeTempPct: null,
+    coffeeSpillPct: null,
+    elapsedSec: state.elapsedSec,
+    captions: state.captions.map((c) => ({ ...c })),
+  };
 }

@@ -1,4 +1,5 @@
 import type {
+  BikeVerdict,
   HotspotId,
   MisfirePattern,
   PartSlot,
@@ -7,6 +8,7 @@ import type {
   SimBikeMake,
   SimPhase,
   SmokeTint,
+  StallReason,
   ToolId,
   UpgradeId,
 } from "./ids";
@@ -17,6 +19,7 @@ import type {
   RunnerRunResult,
   RunnerRunSummary,
   SimSaveState,
+  StandTestInput,
   ToolReading,
 } from "./types";
 
@@ -36,6 +39,7 @@ export interface RideTelemetrySnapshot {
   /** Visible part tiers for Canvas 2D renderer */
   exhaustVisual: "stock" | "performance" | "race";
   cylinderVisual: "stock" | "performance" | "race";
+  airFilterVisual?: "stock" | "performance" | "race";
 
   // Motion & route
   distanceM: number;
@@ -45,6 +49,13 @@ export interface RideTelemetrySnapshot {
   landmark: string | null;
   atStoplight: boolean;
   stoplightRedSec: number;
+  /** World meter position of the next stoplight (or null if none nearby) */
+  nextStoplightM?: number | null;
+  nextStoplightState?: "pending" | "red" | "green" | null;
+  /** World meter positions of upcoming potholes on the route */
+  upcomingPotholesM?: number[];
+  /** Distance in meters to the next pothole ahead (or null) */
+  nextPotholeM?: number | null;
 
   // Controls
   throttle: number;
@@ -82,12 +93,16 @@ export interface RideTelemetrySnapshot {
 
   // Failure & survival states
   stalled: boolean;
-  stallReason: "none" | "fuel" | "spark" | "idle" | "plug-chop";
+  stallReason: StallReason;
   seizeWarning: boolean;
   seizeActive: boolean;
   /** Remaining ms in the clutch-save reaction window when seizing (0 if inactive) */
   seizeClutchWindowMs: number;
   seizedHard: boolean;
+  seizeCooldownHot?: boolean;
+  /** Active gear for 2-speed makes (e.g. Tomos A35) */
+  currentGear?: 1 | 2;
+  gearShiftPulse?: boolean;
   pedalingHome: boolean;
   pedalHomeRemainingM: number;
 
@@ -105,6 +120,10 @@ export interface SimAppSnapshot {
   phase: SimPhase;
   save: SimSaveState;
   ride: RideTelemetrySnapshot | null;
+  /** Live telemetry when running the engine on the garage center stand */
+  standTest: RideTelemetrySnapshot | null;
+  /** True while an active Street Runner session is underway */
+  runnerPlaying: boolean;
   lastRideSummary: RideSummary | null;
   lastRunnerSummary: RunnerRunSummary | null;
   selectedTool: ToolId;
@@ -113,7 +132,9 @@ export interface SimAppSnapshot {
   lastActionNotice: { text: string; tone: "gold" | "green" | "red" | "cyan" } | null;
   /** Whether the active bike visibly drips fuel in the garage (symptom, not fault ID) */
   garageFuelDrip: boolean;
-  /** Whether the active bike currently has an unresolved mechanical issue (generic indicator only) */
+  /** Road-tested bike verdict derived strictly from observed ride/run symptoms */
+  bikeVerdict: BikeVerdict;
+  /** Derived from bikeVerdict === "acting-up" (never a hidden fault answer key) */
   bikeNeedsAttention: boolean;
   /** Ideal jet hint range for UI slider bounds */
   jetRange: { min: number; max: number };
@@ -142,12 +163,18 @@ export interface SimStoreActions {
   cleanCarburetor: (this: void) => void;
   clearFaultlessTestCheck: (this: void) => void;
 
+  // Garage stand test ("Fire it up" on the workbench)
+  startStandTest: (this: void) => void;
+  stopStandTest: (this: void) => void;
+  setStandInput: (this: void, partial: Partial<StandTestInput>) => void;
+  kickStandTest: (this: void) => void;
+
   // Economy
   buyPart: (this: void, partId: string) => boolean;
   buyUpgrade: (this: void, upgradeId: UpgradeId) => boolean;
   buyCraigslistBike: (this: void, listingId: string) => boolean;
 
-  // Ride lifecycle
+  // Ride & Runner lifecycle
   startRide: (this: void, routeId: RouteId) => void;
   setRideInput: (this: void, partial: Partial<RideInput>) => void;
   toggleListenMode: (this: void) => void;
@@ -157,6 +184,7 @@ export interface SimStoreActions {
   callTowTruck: (this: void) => void;
   abortRideToGarage: (this: void) => void;
   dismissRideSummary: (this: void) => void;
+  setRunnerPlaying: (this: void, playing: boolean) => void;
   completeRunnerRun: (this: void, result: RunnerRunResult) => void;
   dismissRunnerSummary: (this: void) => void;
 

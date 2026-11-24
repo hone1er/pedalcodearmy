@@ -9,15 +9,61 @@ import {
   MapPin,
   Moon,
   Mountain,
+  Sparkles,
   Sun,
   Sunrise,
   Sunset,
+  Thermometer,
   TrafficCone,
   Wrench,
+  Zap,
 } from "lucide-react";
-import type { RouteSpec } from "@/lib/simulator/contract";
+import type { RouteMedal, RouteSpec } from "@/lib/simulator/contract";
 import { ROUTES } from "@/lib/simulator/ride/routes";
 import { getActiveBike, useSimStore } from "@/lib/simulator/store/sim-store";
+
+export const ROUTE_MEDAL_ORDER: RouteMedal[] = [
+  "finished",
+  "speed",
+  "cool-head",
+  "hot-coffee",
+];
+
+export function getRouteMedalMeta(
+  medal: RouteMedal,
+  hasCoffeeCup?: boolean,
+): {
+  label: string;
+  icon: typeof CheckCircle2;
+  className: string;
+} {
+  switch (medal) {
+    case "finished":
+      return {
+        label: "Cleared",
+        icon: CheckCircle2,
+        className: "border-emerald-400 bg-emerald-950/80 text-emerald-200",
+      };
+    case "speed":
+      return {
+        label: "Speed",
+        icon: Zap,
+        className: "border-[#FFD700] bg-[#FFD700]/15 text-[#FFD700]",
+      };
+    case "cool-head":
+      return {
+        label: "Cool Head",
+        icon: Thermometer,
+        className: "border-cyan-400 bg-cyan-950/80 text-cyan-200",
+      };
+    case "hot-coffee":
+      return {
+        label: hasCoffeeCup ? "Hot Coffee" : "Clean Run",
+        icon: hasCoffeeCup ? Coffee : Sparkles,
+        className: "border-orange-400 bg-orange-950/80 text-orange-200",
+      };
+  }
+}
 
 const DIFFICULTY_STYLES: Record<
   RouteSpec["difficulty"],
@@ -128,7 +174,7 @@ function buildElevationGraph(route: RouteSpec): {
 }
 
 export function RouteMap() {
-  const { save, bikeNeedsAttention, startRide, setPhase } = useSimStore();
+  const { save, bikeVerdict, startRide, setPhase } = useSimStore();
   const bike = getActiveBike(save);
 
   const readinessWarnings: Array<{ id: string; text: string }> = [];
@@ -144,11 +190,18 @@ export function RouteMap() {
       text: "Danger: You haven't added 2-stroke premix oil to the tank yet — riding on straight gas will seize the piston!",
     });
   }
-  if (bikeNeedsAttention && readinessWarnings.length === 0) {
-    readinessWarnings.push({
-      id: "needs-wrenching",
-      text: "Shakedown note: Your bike still feels like it needs wrenching — riding it will reveal symptoms in real time.",
-    });
+  if (readinessWarnings.length === 0) {
+    if (bikeVerdict === "acting-up") {
+      readinessWarnings.push({
+        id: "acting-up",
+        text: "Last ride showed symptoms — listen closely on the road.",
+      });
+    } else if (bikeVerdict === "untested") {
+      readinessWarnings.push({
+        id: "untested",
+        text: "Freshly wrenched — roll out to see how it runs.",
+      });
+    }
   }
 
   return (
@@ -225,6 +278,7 @@ export function RouteMap() {
           const landmarks = route.segments
             .map((s) => s.landmark)
             .filter((l): l is string => Boolean(l));
+          const earnedMedals = save.routeMedals?.[route.id] ?? [];
 
           return (
             <article
@@ -272,6 +326,30 @@ export function RouteMap() {
                 <p className="mt-2 text-sm leading-relaxed text-zinc-200">
                   {route.description}
                 </p>
+
+                {/* Earned Route Medals */}
+                {earnedMedals.length > 0 && (
+                  <div
+                    aria-label="Earned route medals"
+                    className="mt-3 flex flex-wrap gap-1.5"
+                  >
+                    {ROUTE_MEDAL_ORDER.filter((m) =>
+                      earnedMedals.includes(m),
+                    ).map((medal) => {
+                      const meta = getRouteMedalMeta(medal, route.hasCoffeeCup);
+                      const MedalIcon = meta.icon;
+                      return (
+                        <span
+                          key={medal}
+                          className={`inline-flex items-center gap-1 border-2 px-2 py-0.5 text-[10px] font-black uppercase ${meta.className}`}
+                        >
+                          <MedalIcon className="h-3 w-3" aria-hidden="true" />
+                          {meta.label}
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
 
                 {/* Mini SVG Elevation Profile Graph */}
                 <div className="mt-4 border-2 border-zinc-800 bg-black p-3">

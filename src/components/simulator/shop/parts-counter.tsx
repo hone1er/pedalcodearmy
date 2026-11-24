@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   CheckCircle2,
   ExternalLink,
@@ -11,6 +11,10 @@ import {
   Thermometer,
   Wrench,
 } from "lucide-react";
+import {
+  PulseSynth,
+  loadSimMutedPreference,
+} from "@/lib/simulator/audio/pulse-synth";
 import type {
   InstrumentSpec,
   PartSlot,
@@ -123,6 +127,22 @@ export function PartsCounter() {
   const bike = getActiveBike(save);
   const [category, setCategory] = useState<ShopCategory>("all");
   const [compatibleOnly, setCompatibleOnly] = useState(false);
+  const synthRef = useRef<PulseSynth | null>(null);
+
+  useEffect(() => {
+    return () => {
+      synthRef.current?.destroy();
+      synthRef.current = null;
+    };
+  }, []);
+
+  const handleInstallPart = (partId: string) => {
+    if (!installPart(partId)) return;
+    synthRef.current ??= new PulseSynth(loadSimMutedPreference());
+    synthRef.current.setMuted(loadSimMutedPreference());
+    synthRef.current.unlock();
+    synthRef.current.playGarage("install");
+  };
 
   const showInstruments = category === "all" || category === "instruments";
   const showParts = category !== "instruments";
@@ -439,7 +459,7 @@ export function PartsCounter() {
                             {ownedInInventory > 0 && isCompatible && (
                               <button
                                 type="button"
-                                onClick={() => installPart(part.id)}
+                                onClick={() => handleInstallPart(part.id)}
                                 className="w-full border-2 border-cyan-400 bg-cyan-950/60 py-2 text-xs font-black uppercase tracking-wider text-cyan-200 transition-colors hover:bg-cyan-400 hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
                               >
                                 Install Fresh (From Toolbox)
@@ -467,7 +487,7 @@ export function PartsCounter() {
                                     type="button"
                                     onClick={() => {
                                       if (buyPart(part.id)) {
-                                        installPart(part.id);
+                                        handleInstallPart(part.id);
                                       }
                                     }}
                                     className="border-2 border-white bg-black px-3 py-2 text-xs font-black uppercase tracking-wider text-white transition-colors hover:border-[#FFD700] hover:text-[#FFD700] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700]"
@@ -503,7 +523,7 @@ export function PartsCounter() {
                           <button
                             type="button"
                             disabled={!isCompatible}
-                            onClick={() => installPart(part.id)}
+                            onClick={() => handleInstallPart(part.id)}
                             className="flex-1 border-2 border-[#FFD700] bg-[#FFD700] py-2 text-xs font-black uppercase tracking-wider text-black transition-colors hover:bg-yellow-300 disabled:cursor-not-allowed disabled:border-zinc-700 disabled:bg-zinc-900 disabled:text-zinc-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700]"
                           >
                             {isCompatible
@@ -550,7 +570,7 @@ export function PartsCounter() {
                             type="button"
                             onClick={() => {
                               if (buyPart(part.id)) {
-                                installPart(part.id);
+                                handleInstallPart(part.id);
                               }
                             }}
                             className="border-2 border-white bg-black px-3 py-2 text-xs font-black uppercase tracking-wider text-white transition-colors hover:border-[#FFD700] hover:text-[#FFD700] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700]"

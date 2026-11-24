@@ -6,7 +6,7 @@
 
 import type { HotspotId, OwnedBike, ToolId, ToolReading, ToolSpec } from "../contract";
 import { getPartById } from "../economy/catalog";
-import { buildBikeProfile, effectiveSpark } from "../engine/engine-sim";
+import { AIR_FILTER_DIRT_THRESHOLD, buildBikeProfile, effectiveSpark } from "../engine/engine-sim";
 import { getJetDeviation, getFault, hasFault } from "../faults/catalog";
 
 export const DIAGNOSTIC_TOOLS: ToolSpec[] = [
@@ -442,6 +442,12 @@ function visualReading(bike: OwnedBike, hotspot: HotspotId): ToolReading {
           "Carb wiggles on the manifold",
           "Grab the carb and it shifts a little on the intake. The clamp is snug but the gasket underneath looks shrunken.",
           "Carb mount: wiggles; intake gasket looks shrunken.",
+        );
+      if ((bike.wear.airFilterDirt ?? 0) >= AIR_FILTER_DIRT_THRESHOLD)
+        return clue(
+          "Air filter is caked in dust",
+          `The filter element on the carb mouth is grey with East Bay road dust — you can barely see through it. Jet stamped #${bike.tuning.mainJet}, needle clip in position ${bike.tuning.needleClip}.`,
+          "Carb: air filter caked with dust — it's choking on air.",
         );
       return ok(
         "Carb looks clean",

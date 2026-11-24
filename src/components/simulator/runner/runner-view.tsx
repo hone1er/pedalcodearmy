@@ -21,7 +21,10 @@ import {
   Wrench,
   Zap,
 } from "lucide-react";
-import { PulseSynth } from "@/lib/simulator/audio/pulse-synth";
+import {
+  PulseSynth,
+  loadSimMutedPreference,
+} from "@/lib/simulator/audio/pulse-synth";
 import type { RunnerRunSummary, SimBikeMake } from "@/lib/simulator/contract";
 import { getPartById } from "@/lib/simulator/economy/catalog";
 import { RunnerRenderer } from "@/lib/simulator/runner/runner-renderer";
@@ -48,35 +51,6 @@ const MAKE_NAMES: Record<SimBikeMake, string> = {
 };
 
 const STEP_SEC = 1 / 60;
-
-/** Crisp arcade one-shot chimes using a shared AudioContext when running */
-function playArcadeTone(
-  ctx: AudioContext | null,
-  freq: number,
-  endFreq: number,
-  durSec: number,
-  type: OscillatorType = "triangle",
-  gainPeak = 0.12,
-): void {
-  if (ctx?.state !== "running") return;
-  const now = ctx.currentTime;
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-  osc.type = type;
-  osc.frequency.setValueAtTime(freq, now);
-  osc.frequency.exponentialRampToValueAtTime(Math.max(40, endFreq), now + durSec);
-  gain.gain.setValueAtTime(0.001, now);
-  gain.gain.linearRampToValueAtTime(gainPeak, now + 0.01);
-  gain.gain.exponentialRampToValueAtTime(0.0008, now + durSec);
-  osc.connect(gain);
-  gain.connect(ctx.destination);
-  osc.onended = () => {
-    osc.disconnect();
-    gain.disconnect();
-  };
-  osc.start(now);
-  osc.stop(now + durSec + 0.02);
-}
 
 function endReasonMeta(reason: RunnerRunSummary["endReason"]): {
   title: string;
@@ -114,9 +88,10 @@ function endReasonMeta(reason: RunnerRunSummary["endReason"]): {
 export function RunnerView() {
   const {
     save,
-    bikeNeedsAttention,
+    bikeVerdict,
     lastRunnerSummary,
     setPhase,
+    setRunnerPlaying,
     completeRunnerRun,
     dismissRunnerSummary,
   } = useSimStore();
@@ -126,7 +101,8 @@ export function RunnerView() {
   const [mode, setMode] = useState<"lobby" | "playing">("lobby");
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [paused, setPaused] = useState(false);
-  const [muted, setMuted] = useState(false);
+  const [muted, setMuted] = useState(() => loadSimMutedPreference());
+  const [keyLegendVisible, setKeyLegendVisible] = useState(false);
   const [hud, setHud] = useState<RunnerHudSnapshot | null>(null);
   const [lbRefreshKey, setLbRefreshKey] = useState(0);
 
@@ -140,13 +116,14 @@ export function RunnerView() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rendererRef = useRef<RunnerRenderer | null>(null);
   const synthRef = useRef<PulseSynth | null>(null);
-  const sfxCtxRef = useRef<AudioContext | null>(null);
 
   const runnerRef = useRef<RunnerState | null>(null);
   const inputRef = useRef<RunnerInput>({ ...NEUTRAL_RUNNER_INPUT });
   const pausedRef = useRef(false);
-  const mutedRef = useRef(false);
+  const mutedRef = useRef(muted);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const completeRunnerRunRef = useRef(completeRunnerRun);
+  completeRunnerRunRef.current = completeRunnerRun;
 
   useEffect(() => {
     pausedRef.current = paused;
@@ -159,35 +136,36 @@ export function RunnerView() {
   }, [muted]);
 
   const ensureAudio = useCallback(() => {
-    if (!synthRef.current) {
-      synthRef.current = new PulseSynth();
-      synthRef.current.setMuted(mutedRef.current);
-    }
+    synthRef.current ??= new PulseSynth(mutedRef.current);
+    synthRef.current.setMuted(mutedRef.current);
     synthRef.current.unlock();
-    if (!sfxCtxRef.current && typeof window !== "undefined") {
-      const AudioCtor = window.AudioContext;
-      if (AudioCtor) sfxCtxRef.current = new AudioCtor();
-    }
-    if (sfxCtxRef.current?.state === "suspended") {
-      void sfxCtxRef.current.resume();
-    }
   }, []);
 
   const stopAudio = useCallback(() => {
     synthRef.current?.destroy();
     synthRef.current = null;
-    if (sfxCtxRef.current) {
-      void sfxCtxRef.current.close();
-      sfxCtxRef.current = null;
-    }
   }, []);
 
-  // Clean up audio on unmount
+  // Finalize any active run and clean up audio if RunnerView unmounts mid-run
   useEffect(() => {
     return () => {
+      const activeState = runnerRef.current;
+      if (activeState) {
+        runnerRef.current = null;
+        completeRunnerRunRef.current(finalizeRunnerRun(activeState, "aborted"));
+      }
       stopAudio();
     };
   }, [stopAudio]);
+
+  // Auto-fade the 3-second start-of-run key legend overlay
+  useEffect(() => {
+    if (mode !== "playing" || !keyLegendVisible) return;
+    const timer = window.setTimeout(() => {
+      setKeyLegendVisible(false);
+    }, 3200);
+    return () => window.clearTimeout(timer);
+  }, [keyLegendVisible, mode]);
 
   const finishActiveRun = useCallback(
     (overrideReason?: RunnerRunSummary["endReason"]) => {
@@ -199,14 +177,16 @@ export function RunnerView() {
         overrideReason ?? state.endReason ?? "aborted",
       );
       stopAudio();
+      setKeyLegendVisible(false);
       setPaused(false);
       setHud(null);
       setMode("lobby");
+      setRunnerPlaying(false);
       setSubmittedRank(null);
       setSubmitError(null);
       completeRunnerRun(result);
     },
-    [completeRunnerRun, stopAudio],
+    [completeRunnerRun, setRunnerPlaying, stopAudio],
   );
 
   const startRun = useCallback(() => {
@@ -229,8 +209,10 @@ export function RunnerView() {
     runnerRef.current = state;
     inputRef.current = { ...NEUTRAL_RUNNER_INPUT };
     setHud(buildRunnerHudSnapshot(state));
+    setKeyLegendVisible(true);
+    setRunnerPlaying(true);
     setMode("playing");
-  }, [dismissRunnerSummary, ensureAudio, save]);
+  }, [dismissRunnerSummary, ensureAudio, save, setRunnerPlaying]);
 
   // Canvas & 60 Hz Game Loop while playing
   useEffect(() => {
@@ -281,27 +263,48 @@ export function RunnerView() {
           inputRef.current.kickstartPulse = false;
 
           const events = stepRunner(state, stepInput, STEP_SEC);
-          const sfx = mutedRef.current ? null : sfxCtxRef.current;
 
           for (const ev of events) {
-            if (ev.type === "sim") {
-              synthRef.current?.playEvent(ev.event);
-            } else if (ev.type === "wheelie") {
-              playArcadeTone(sfx, ev.strong ? 260 : 180, ev.strong ? 520 : 280, 0.11, "sawtooth", 0.08);
-            } else if (ev.type === "wheelie-clear") {
-              playArcadeTone(sfx, 520, 880, 0.14, "triangle", 0.12);
-              renderer.spawnBurst(canvas.clientWidth * 0.22, canvas.clientHeight * 0.65, "#FFD700", 10);
-            } else if (ev.type === "close-call") {
-              playArcadeTone(sfx, 640, 960, 0.1, "sine", 0.09);
-            } else if (ev.type === "pickup") {
-              playArcadeTone(sfx, 660, 1120, 0.09, "triangle", 0.1);
-              renderer.spawnBurst(canvas.clientWidth * 0.22, canvas.clientHeight * 0.62, "#22D3EE", 8);
-            } else if (ev.type === "shop-arch") {
-              playArcadeTone(sfx, 440, 990, 0.24, "square", 0.1);
-              renderer.spawnBurst(canvas.clientWidth * 0.25, canvas.clientHeight * 0.55, "#4ADE80", 14);
-            } else if (ev.type === "hit") {
-              playArcadeTone(sfx, 180, 55, 0.22, "sawtooth", 0.16);
-              renderer.spawnBurst(canvas.clientWidth * 0.22, canvas.clientHeight * 0.66, "#EF4444", 14);
+            switch (ev.type) {
+              case "sim":
+                synthRef.current?.playEvent(ev.event);
+                break;
+              case "lane-shift":
+                synthRef.current?.playArcade("lane-shift");
+                break;
+              case "wheelie":
+                synthRef.current?.playArcade("wheelie", { strong: ev.strong });
+                break;
+              case "wheelie-clear":
+                synthRef.current?.playArcade("wheelie-clear");
+                renderer.spawnBurstAtPlayer(state, "#FFD700", 10);
+                break;
+              case "close-call":
+                synthRef.current?.playArcade("close-call");
+                break;
+              case "pickup":
+                synthRef.current?.playArcade("pickup", {
+                  comboStep: ev.comboStep,
+                });
+                renderer.spawnBurstAtPlayer(state, "#22D3EE", 8);
+                break;
+              case "shop-arch":
+                synthRef.current?.playArcade("shop-arch", { shop: ev.shop });
+                renderer.spawnBurstAtPlayer(state, "#4ADE80", 14);
+                break;
+              case "hit":
+                synthRef.current?.playArcade("hit");
+                renderer.spawnBurstAtPlayer(state, "#EF4444", 14);
+                break;
+              case "car-horn":
+                synthRef.current?.playArcade("car-horn");
+                break;
+              case "dog-bark":
+                synthRef.current?.playArcade("dog-bark");
+                break;
+              case "zone-change":
+                synthRef.current?.playArcade("zone-change");
+                break;
             }
           }
 
@@ -348,7 +351,7 @@ export function RunnerView() {
 
       ensureAudio();
 
-      if (e.code === "KeyP" || e.code === "Escape") {
+      if (e.code === "Escape") {
         e.preventDefault();
         setPaused((p) => !p);
         return;
@@ -369,6 +372,7 @@ export function RunnerView() {
       } else if (e.code === "Space" || e.code === "ArrowRight" || e.code === "KeyD") {
         e.preventDefault();
         if (!e.repeat) inputRef.current.wheeliePulse = true;
+        inputRef.current.wheelieHeld = true;
       } else if (e.code === "KeyQ") {
         e.preventDefault();
         inputRef.current.clutch = true;
@@ -382,6 +386,9 @@ export function RunnerView() {
     };
 
     const onKeyUp = (e: KeyboardEvent) => {
+      if (e.code === "Space" || e.code === "ArrowRight" || e.code === "KeyD") {
+        inputRef.current.wheelieHeld = false;
+      }
       if (e.code === "KeyQ") inputRef.current.clutch = false;
       if (e.code === "KeyB" || e.code === "ShiftLeft" || e.code === "ShiftRight") {
         inputRef.current.brake = false;
@@ -389,6 +396,7 @@ export function RunnerView() {
     };
 
     const onBlur = () => {
+      inputRef.current.wheelieHeld = false;
       inputRef.current.clutch = false;
       inputRef.current.brake = false;
     };
@@ -520,9 +528,30 @@ export function RunnerView() {
                 {hud.distanceM}m • {hud.partsCollected} parts
               </div>
             </div>
+
+            {/* Grade / Headwind Chips */}
+            {(Math.abs(hud.gradePct) >= 2 || hud.headwindActive) && (
+              <div className="flex flex-wrap items-center gap-1.5 border-l-2 border-zinc-800 pl-3">
+                {hud.gradePct >= 2 && (
+                  <span className="border-2 border-black bg-orange-500 px-2 py-0.5 text-[10px] font-black uppercase text-black tabular-nums">
+                    CLIMB +{Math.round(hud.gradePct)}%
+                  </span>
+                )}
+                {hud.gradePct <= -2 && (
+                  <span className="border-2 border-black bg-cyan-400 px-2 py-0.5 text-[10px] font-black uppercase text-black tabular-nums">
+                    DOWNHILL {Math.round(hud.gradePct)}%
+                  </span>
+                )}
+                {hud.headwindActive && (
+                  <span className="border-2 border-black bg-indigo-400 px-2 py-0.5 text-[10px] font-black uppercase text-black">
+                    HEADWIND
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
-          {/* Right: Speed, Powerups & Controls */}
+          {/* Right: Speed, Tach, Powerups & Controls */}
           <div className="flex items-center gap-2">
             {hud.turboSec > 0 && (
               <span className="inline-flex items-center gap-1 border-2 border-black bg-[#FFD700] px-2 py-0.5 text-[10px] font-black uppercase text-black">
@@ -548,6 +577,39 @@ export function RunnerView() {
                 MPH
               </span>
             </div>
+
+            {hud.hasTach && (() => {
+              const rpmPct = Math.min(
+                100,
+                Math.max(0, (hud.rpm / Math.max(1000, hud.maxRpm)) * 100),
+              );
+              return (
+                <div
+                  className={`hidden min-w-[92px] border-2 px-2 py-1 transition-colors sm:block ${
+                    hud.powerbandActive
+                      ? "border-[#FFD700] bg-[#FFD700]/15 text-[#FFD700] shadow-[0_0_12px_rgba(255,215,0,0.45)]"
+                      : "border-zinc-700 bg-black text-cyan-300"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-1 text-[10px] font-black tabular-nums">
+                    <span>{Math.round(hud.rpm)}</span>
+                    <span className="text-[9px] opacity-80">RPM</span>
+                  </div>
+                  <div className="mt-0.5 h-1.5 w-full overflow-hidden bg-zinc-900">
+                    <div
+                      className={`h-full transition-all duration-75 ${
+                        rpmPct > 88
+                          ? "bg-red-500"
+                          : hud.powerbandActive
+                            ? "bg-[#FFD700]"
+                            : "bg-cyan-400"
+                      }`}
+                      style={{ width: `${rpmPct}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })()}
 
             {hud.hasChtGauge && (
               <div
@@ -623,6 +685,28 @@ export function RunnerView() {
         >
           <canvas ref={canvasRef} className="block h-full w-full" />
 
+          {/* Subtle "ON THE PIPE" / Turbo screen-edge glow */}
+          {(hud.powerbandActive || hud.turboSec > 0) && !hud.dying && (
+            <div
+              aria-hidden="true"
+              className={`pointer-events-none absolute inset-0 z-10 transition-opacity duration-200 ${
+                hud.turboSec > 0
+                  ? "shadow-[inset_0_0_36px_rgba(255,215,0,0.45)]"
+                  : "shadow-[inset_0_0_28px_rgba(56,189,248,0.35)]"
+              }`}
+            />
+          )}
+
+          {/* Start-of-Run 3-Second Auto-Fading Key Legend Pill */}
+          {keyLegendVisible && !paused && !hud.seizeActive && !hud.dying && (
+            <div className="pointer-events-none absolute inset-x-0 bottom-3 z-20 flex justify-center px-3 transition-opacity duration-500">
+              <div className="border-2 border-[#FFD700] bg-black/85 px-3 py-1.5 text-center text-[11px] font-black uppercase tracking-wide text-[#FFD700] shadow-[3px_3px_0px_#000]">
+                W/S Lanes &bull; Space Hold/Tap Wheelie &bull; Q Clutch &bull; B
+                Coast &bull; R Kick &bull; Esc Pause
+              </div>
+            </div>
+          )}
+
           {/* Floating Arcade & Diagnostic Popups (upper-center safe band) */}
           <div className="pointer-events-none absolute inset-x-0 top-3 z-[25] flex flex-col items-center gap-1.5 px-4">
             {hud.popups.map((p) => {
@@ -654,43 +738,57 @@ export function RunnerView() {
             })}
           </div>
 
-          {/* URGENT SEIZE CLUTCH-SAVE ALERT */}
-          {hud.seizeActive && (
-            <div className="absolute inset-x-4 top-1/2 z-30 -translate-y-1/2 border-4 border-black bg-red-600 p-4 text-center text-white shadow-[8px_8px_0px_#000] sm:inset-x-auto sm:left-1/2 sm:w-full sm:max-w-md sm:-translate-x-1/2">
-              <div className="flex items-center justify-center gap-2 text-lg font-black uppercase tracking-wider sm:text-xl">
-                <OctagonAlert className="h-6 w-6 animate-bounce text-[#FFD700]" />
-                <span>ENGINE SEIZING! PULL [Q] CLUTCH!</span>
+          {/* URGENT SEIZE CLUTCH-SAVE TOP-BAND ALERT + EDGE VIGNETTE (lanes stay visible!) */}
+          {hud.seizeActive && !hud.dying && (
+            <>
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-0 z-20 animate-pulse border-4 border-red-500 shadow-[inset_0_0_48px_rgba(239,68,68,0.85)]"
+              />
+              <div className="absolute inset-x-3 top-2 z-30 flex flex-wrap items-center justify-between gap-2 border-4 border-black bg-red-600 px-3 py-2 text-white shadow-[5px_5px_0px_#000]">
+                <div className="min-w-[180px] flex-1">
+                  <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider sm:text-sm">
+                    <OctagonAlert className="h-4 w-4 shrink-0 animate-bounce text-[#FFD700]" />
+                    <span>ENGINE SEIZING! PULL CLUTCH [Q] NOW!</span>
+                  </div>
+                  <div className="mt-1.5 h-2 w-full overflow-hidden border border-black bg-black">
+                    <div
+                      className="h-full bg-[#FFD700]"
+                      style={{ width: `${seizePct}%` }}
+                    />
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onContextMenu={(e) => e.preventDefault()}
+                  onPointerDown={(e) => {
+                    e.stopPropagation();
+                    try {
+                      e.currentTarget.setPointerCapture(e.pointerId);
+                    } catch {
+                      // synthetic event
+                    }
+                    inputRef.current.clutch = true;
+                  }}
+                  onPointerUp={() => {
+                    inputRef.current.clutch = false;
+                  }}
+                  onPointerCancel={() => {
+                    inputRef.current.clutch = false;
+                  }}
+                  onLostPointerCapture={() => {
+                    inputRef.current.clutch = false;
+                  }}
+                  className="touch-none border-[3px] border-black bg-[#FFD700] px-3.5 py-1.5 text-xs font-black uppercase text-black shadow-[3px_3px_0px_#000] active:translate-y-0.5"
+                >
+                  PULL CLUTCH [Q]
+                </button>
               </div>
-              <div className="mt-2 h-3 w-full overflow-hidden border-2 border-black bg-black">
-                <div className="h-full bg-[#FFD700]" style={{ width: `${seizePct}%` }} />
-              </div>
-              <button
-                type="button"
-                onContextMenu={(e) => e.preventDefault()}
-                onPointerDown={(e) => {
-                  e.stopPropagation();
-                  try {
-                    e.currentTarget.setPointerCapture(e.pointerId);
-                  } catch {
-                    // synthetic event
-                  }
-                  inputRef.current.clutch = true;
-                }}
-                onPointerUp={() => {
-                  inputRef.current.clutch = false;
-                }}
-                onPointerCancel={() => {
-                  inputRef.current.clutch = false;
-                }}
-                className="mt-3 w-full touch-none border-[3px] border-black bg-[#FFD700] px-4 py-2 text-sm font-black uppercase text-black shadow-[4px_4px_0px_#000]"
-              >
-                PULL CLUTCH [Q] — SAVE THE TOP END!
-              </button>
-            </div>
+            </>
           )}
 
           {/* STALLED PROMPT */}
-          {hud.stalled && !hud.seizeActive && !hud.seizedHard && (
+          {hud.stalled && !hud.seizeActive && !hud.seizedHard && !hud.dying && (
             <div className="absolute inset-x-4 bottom-3 z-20 flex flex-wrap items-center justify-between gap-2 border-[3px] border-black bg-orange-500 px-3 py-2 text-black shadow-[4px_4px_0px_#000]">
               <div className="text-xs font-black uppercase">
                 {hud.seizeCooldownHot
@@ -772,7 +870,7 @@ export function RunnerView() {
           </div>
 
           <div className="hidden text-center text-[11px] font-black uppercase tracking-wide lg:block">
-            W/S or ↑/↓ Switch Lanes • Space Wheelie Ground Hazards • Q Clutch Save • B Coast/Cool • R Kick
+            W/S or ↑/↓ Switch Lanes • Space Hold/Tap Wheelie • Q Clutch Save • B Coast/Cool • R Kick • Esc Pause
           </div>
 
           <div className="flex items-center gap-1.5">
@@ -823,9 +921,24 @@ export function RunnerView() {
             <button
               type="button"
               onContextMenu={(e) => e.preventDefault()}
-              onPointerDown={() => {
+              onPointerDown={(e) => {
                 ensureAudio();
+                try {
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                } catch {
+                  // synthetic
+                }
                 inputRef.current.wheeliePulse = true;
+                inputRef.current.wheelieHeld = true;
+              }}
+              onPointerUp={() => {
+                inputRef.current.wheelieHeld = false;
+              }}
+              onPointerCancel={() => {
+                inputRef.current.wheelieHeld = false;
+              }}
+              onLostPointerCapture={() => {
+                inputRef.current.wheelieHeld = false;
               }}
               className="touch-none border-[3px] border-black bg-black px-4 py-2 text-xs font-black uppercase text-[#FFD700] shadow-[3px_3px_0px_#FFF] active:translate-y-0.5"
             >
@@ -849,9 +962,13 @@ export function RunnerView() {
   if (!bike.tuning.hasPremixOil) {
     warnings.push("No 2-stroke premix oil in the tank — it'll run dry and seize fast!");
   }
-  if (bikeNeedsAttention && !bike.tuning.killSwitchOn && bike.tuning.hasPremixOil) {
+  if (
+    bikeVerdict === "acting-up" &&
+    !bike.tuning.killSwitchOn &&
+    bike.tuning.hasPremixOil
+  ) {
     warnings.push(
-      "Your bike still needs wrenching — expect sluggish speed, boggy wheelies, or stalling in traffic until you tune it in the Garage.",
+      "Last ride showed symptoms — expect sluggish speed, boggy wheelies, or stalling in traffic until you tune it in the Garage.",
     );
   }
 
@@ -893,28 +1010,88 @@ export function RunnerView() {
             </div>
 
             <div className="space-y-4 p-5">
+              {(Boolean(lastRunnerSummary.cleanTuneBonus) ||
+                Boolean(lastRunnerSummary.isNewBestDistance)) && (
+                <div className="flex flex-wrap gap-2">
+                  {lastRunnerSummary.cleanTuneBonus && (
+                    <span className="border-2 border-emerald-400 bg-emerald-950/70 px-2.5 py-1 text-xs font-black uppercase text-emerald-200">
+                      CLEAN TUNE +25%
+                    </span>
+                  )}
+                  {lastRunnerSummary.isNewBestDistance && (
+                    <span className="border-2 border-[#FFD700] bg-[#FFD700]/15 px-2.5 py-1 text-xs font-black uppercase text-[#FFD700]">
+                      NEW BEST DISTANCE!
+                    </span>
+                  )}
+                </div>
+              )}
+
               {/* Key Stats Grid */}
               <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
-                {[
-                  { label: "Distance", val: `${lastRunnerSummary.distanceM}m`, accent: "text-white" },
-                  { label: "Top Speed", val: `${lastRunnerSummary.topSpeedMph} mph`, accent: "text-[#FFD700]" },
-                  { label: "Max Combo", val: `x${lastRunnerSummary.maxCombo}`, accent: "text-cyan-300" },
-                  { label: "Wheelie Clears", val: String(lastRunnerSummary.wheelieClears), accent: "text-orange-300" },
-                  { label: "Cash Earned", val: `+$${lastRunnerSummary.cashEarned}`, accent: "text-emerald-400" },
-                  { label: "Street Rep", val: `+${lastRunnerSummary.repEarned} REP`, accent: "text-cyan-400" },
-                ].map((s) => (
-                  <div key={s.label} className="border-2 border-zinc-800 bg-black p-2.5">
-                    <div className="text-[10px] font-black uppercase text-zinc-500">
-                      {s.label}
-                    </div>
+                {(() => {
+                  const engineTop =
+                    lastRunnerSummary.engineTopSpeedMph ??
+                    lastRunnerSummary.topSpeedMph;
+                  const turboNote =
+                    lastRunnerSummary.topSpeedMph > engineTop + 1
+                      ? `(${lastRunnerSummary.topSpeedMph} mph w/ Turbo)`
+                      : undefined;
+                  return [
+                    {
+                      label: "Distance",
+                      val: `${lastRunnerSummary.distanceM}m`,
+                      accent: "text-white",
+                    },
+                    {
+                      label: "Engine Top Speed",
+                      val: `${engineTop} mph`,
+                      sub: turboNote,
+                      accent: "text-[#FFD700]",
+                    },
+                    {
+                      label: "Max Combo",
+                      val: `x${lastRunnerSummary.maxCombo}`,
+                      accent: "text-cyan-300",
+                    },
+                    {
+                      label: "Wheelie Clears",
+                      val: String(lastRunnerSummary.wheelieClears),
+                      accent: "text-orange-300",
+                    },
+                    {
+                      label: "Cash Earned",
+                      val: `+$${lastRunnerSummary.cashEarned}`,
+                      accent: "text-emerald-400",
+                    },
+                    {
+                      label: "Street Rep",
+                      val: `+${lastRunnerSummary.repEarned} REP`,
+                      accent: "text-cyan-400",
+                    },
+                  ].map((s) => (
                     <div
-                      className={`mt-1 text-base font-black tabular-nums ${s.accent}`}
-                      style={{ fontFamily: "var(--font-orbitron), Orbitron, monospace" }}
+                      key={s.label}
+                      className="border-2 border-zinc-800 bg-black p-2.5"
                     >
-                      {s.val}
+                      <div className="text-[10px] font-black uppercase text-zinc-500">
+                        {s.label}
+                      </div>
+                      <div
+                        className={`mt-1 text-base font-black tabular-nums ${s.accent}`}
+                        style={{
+                          fontFamily: "var(--font-orbitron), Orbitron, monospace",
+                        }}
+                      >
+                        {s.val}
+                      </div>
+                      {"sub" in s && s.sub && (
+                        <div className="mt-0.5 text-[10px] font-bold text-zinc-400">
+                          {s.sub}
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  ));
+                })()}
               </div>
 
               {/* Mechanical Observations */}
@@ -1073,7 +1250,7 @@ export function RunnerView() {
             </div>
           </div>
 
-          {/* Readiness / Tune Warning */}
+          {/* Readiness / Tune Banner (derived purely from road-tested verdict) */}
           {warnings.length > 0 ? (
             <div className="space-y-1.5 border-2 border-orange-500 bg-orange-950/50 p-3 text-xs font-bold text-orange-100">
               {warnings.map((w, i) => (
@@ -1083,11 +1260,18 @@ export function RunnerView() {
                 </div>
               ))}
             </div>
+          ) : bikeVerdict === "untested" ? (
+            <div className="flex items-center gap-2 border-2 border-cyan-500/70 bg-cyan-950/40 p-3 text-xs font-bold text-cyan-200">
+              <Gauge className="h-4 w-4 shrink-0 text-cyan-400" />
+              <span>
+                Untested setup — send it down the avenue to see how this build pulls under load!
+              </span>
+            </div>
           ) : (
             <div className="flex items-center gap-2 border-2 border-emerald-500/70 bg-emerald-950/40 p-3 text-xs font-bold text-emerald-200">
               <Gauge className="h-4 w-4 shrink-0 text-emerald-400" />
               <span>
-                Your build feels dialed — full speed, crisp wheelies, and clean 2-stroke power ready for traffic!
+                Ran clean on last road test — full speed, crisp wheelies, and clean 2-stroke power ready for traffic!
               </span>
             </div>
           )}

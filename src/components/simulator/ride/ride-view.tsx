@@ -71,6 +71,8 @@ function describeStallReason(
       return "DIED AT IDLE — NEEDS THROTTLE BLIP OR IDLE SCREW TWEAK.";
     case "plug-chop":
       return "PLUG CHOP COMPLETE — COASTED CLEANLY TO THE CURB!";
+    case "kill-switch":
+      return "KILL SWITCH CUT — Cut ignition below wide-open throttle — kick it [R] to fire back up, or hold [K] at full throttle for a true plug chop.";
     default:
       return "ENGINE STALLED — KICKSTART IT OR HEAD BACK TO THE GARAGE.";
   }
@@ -722,9 +724,9 @@ export function RideView() {
 
         {/* Seize Pre-Warning Badge */}
         {ride.seizeWarning && !seizeUrgent && (
-          <div className="pointer-events-none absolute top-14 left-1/2 z-20 -translate-x-1/2 border-[3px] border-black bg-orange-500 px-3 py-1 text-xs font-black uppercase tracking-wide text-black shadow-[4px_4px_0px_#000]">
+          <div className="pointer-events-none absolute top-16 right-3 z-20 max-w-[calc(100%-1.5rem)] border-[3px] border-black bg-orange-500 px-3 py-1 text-xs font-black uppercase tracking-wide text-black shadow-[4px_4px_0px_#000]">
             <span className="inline-flex items-center gap-1.5">
-              <Flame className="h-4 w-4" />
+              <Flame className="h-4 w-4 shrink-0" />
               RUNNING HOT — PULL CLUTCH [Q] OR EASE THROTTLE!
             </span>
           </div>
@@ -972,22 +974,28 @@ export function RideView() {
                 />
               </div>
             </div>
-            <div>
-              <div className="flex justify-between text-[10px] font-bold uppercase text-zinc-300">
-                <span>Carb Fuel Bowl</span>
-                <span>{Math.round(ride.fuelBowlPct)}%</span>
+            {ride.hasStethoscope ? (
+              <div>
+                <div className="flex justify-between text-[10px] font-bold uppercase text-zinc-300">
+                  <span>Carb Fuel Bowl</span>
+                  <span>{Math.round(ride.fuelBowlPct)}%</span>
+                </div>
+                <div className="h-2 w-full border border-black bg-zinc-800">
+                  <div
+                    className={`h-full ${
+                      ride.fuelBowlPct < 25 ? "bg-red-500" : "bg-cyan-400"
+                    }`}
+                    style={{
+                      width: `${Math.min(100, Math.max(0, ride.fuelBowlPct))}%`,
+                    }}
+                  />
+                </div>
               </div>
-              <div className="h-2 w-full border border-black bg-zinc-800">
-                <div
-                  className={`h-full ${
-                    ride.fuelBowlPct < 25 ? "bg-red-500" : "bg-cyan-400"
-                  }`}
-                  style={{
-                    width: `${Math.min(100, Math.max(0, ride.fuelBowlPct))}%`,
-                  }}
-                />
+            ) : (
+              <div className="border border-zinc-800 bg-black/60 px-2 py-1 text-[10px] font-bold uppercase text-zinc-400">
+                FUEL FLOW: LISTEN FOR SPUTTER
               </div>
-            </div>
+            )}
           </div>
         </div>
 
