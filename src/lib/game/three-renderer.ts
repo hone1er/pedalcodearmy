@@ -8,7 +8,6 @@ import {
   PLAYER_X_POSITION,
   VIRTUAL_WIDTH,
 } from "./types";
-import { getMopedStats } from "./moped-stats";
 
 // ── QUALITY TIERS ─────────────────────────────────────────────────────────
 
@@ -88,30 +87,49 @@ const LANE_POSITIONS = [-1.6, 0, 1.6];
 
 const MOPED_COLORS: Record<
   MopedMake,
-  { frame: number; accent: number; seat: number; jacket: number }
+  {
+    frame: number;
+    accent: number;
+    secondary: number;
+    seat: number;
+    helmet: number;
+    jacket: number;
+  }
 > = {
+  // Modeled on Joe's yellow Puch Maxi S (black front fender, chrome trim & rack)
   "puch-maxi": {
-    frame: 0xffffff,
-    accent: 0x22c55e,
-    seat: 0x18181b,
+    frame: 0xfacc15,
+    accent: 0x18181b,
+    secondary: 0xe5e7eb,
+    seat: 0x141417,
+    helmet: 0xfacc15,
     jacket: 0x111827,
   },
+  // Modeled on PCA's red Honda Hobbit PA50 (cream-white downtube covers & shrouded shocks)
   "honda-hobbit": {
-    frame: 0xef4444,
-    accent: 0xffffff,
-    seat: 0x18181b,
+    frame: 0xdc2626,
+    accent: 0xf5f5dc,
+    secondary: 0x18181b,
+    seat: 0x141417,
+    helmet: 0xef4444,
     jacket: 0x1f2937,
   },
+  // Modeled on Joe's pearl-white Derbi Variant SL (black upper forks, Estoril pipe, gold badge)
   "derbi-variant": {
-    frame: 0x2563eb,
-    accent: 0xffd700,
+    frame: 0xf4f4f5,
+    accent: 0x18181b,
+    secondary: 0xeab308,
     seat: 0x111827,
+    helmet: 0xf8fafc,
     jacket: 0x0f172a,
   },
+  // Modeled on Mili's metallic silver Tomos A35 (aero nose fairing, black fork boots, silver 6-spoke mags)
   "tomos-a35": {
-    frame: 0x4b5563,
-    accent: 0xe5e7eb,
-    seat: 0x111827,
+    frame: 0xd4d4d8,
+    accent: 0x27272a,
+    secondary: 0xf59e0b,
+    seat: 0x18181b,
+    helmet: 0x94a3b8,
     jacket: 0x18181b,
   },
 };
@@ -959,7 +977,7 @@ export class ThreeRenderer {
     }
   }
 
-  // ── MOPED (4 DISTINCT LOW-POLY SILHOUETTES) ─────────────────────────────
+  // ── MOPED (REFERENCE-ACCURATE 3D MODELS OF PCA'S 4 ICONIC MOPEDS) ───────
 
   private buildMoped(make: MopedMake): void {
     this.currentMake = make;
@@ -972,62 +990,181 @@ export class ThreeRenderer {
     }
 
     const colors = MOPED_COLORS[make];
-    const stats = getMopedStats(make);
-    const wheelRadius = 0.36;
     const d = this.q.geoDetail;
     const shadows = this.q.shadowsEnabled;
 
+    // Tomos A35 runs compact 16" cast wheels; Puch/Hobbit/Derbi run 17" wheels
+    const wheelRadius = make === "tomos-a35" ? 0.34 : 0.37;
+    const rearX = -0.66;
+    const frontX = 0.68;
+
     const tireMat = new THREE.MeshStandardMaterial({
-      color: 0x18181b,
-      roughness: 0.75,
-      metalness: 0.15,
+      color: 0x141418,
+      roughness: 0.82,
+      metalness: 0.1,
     });
     const rimMat = new THREE.MeshStandardMaterial({
       color: 0xe5e7eb,
-      roughness: 0.25,
-      metalness: 0.85,
+      roughness: 0.22,
+      metalness: 0.88,
+    });
+    const magMat = new THREE.MeshStandardMaterial({
+      color: make === "tomos-a35" ? 0xd4d4d8 : 0xcbd5e1,
+      roughness: 0.28,
+      metalness: 0.78,
     });
     const frameMat = new THREE.MeshStandardMaterial({
       color: colors.frame,
-      roughness: 0.22,
-      metalness: 0.72,
+      roughness: make === "tomos-a35" ? 0.24 : 0.28,
+      metalness: make === "tomos-a35" ? 0.72 : 0.38,
     });
     const accentMat = new THREE.MeshStandardMaterial({
       color: colors.accent,
-      roughness: 0.28,
-      metalness: 0.55,
+      roughness: 0.4,
+      metalness: 0.25,
+    });
+    const secondaryMat = new THREE.MeshStandardMaterial({
+      color: colors.secondary,
+      roughness: 0.3,
+      metalness: 0.6,
     });
     const chromeMat = new THREE.MeshStandardMaterial({
-      color: 0xd1d5db,
-      roughness: 0.15,
-      metalness: 0.92,
+      color: 0xe2e8f0,
+      roughness: 0.14,
+      metalness: 0.94,
     });
+    const blackMetalMat = new THREE.MeshStandardMaterial({
+      color: 0x1c1c21,
+      roughness: 0.45,
+      metalness: 0.6,
+    });
+    const engineMat = new THREE.MeshStandardMaterial({
+      color: make === "tomos-a35" ? 0x27272a : 0x71717a,
+      roughness: 0.42,
+      metalness: 0.68,
+    });
+    const seatMat = new THREE.MeshLambertMaterial({ color: colors.seat });
 
-    const buildWheel = (xPos: number): THREE.Group => {
+    // Helper: create extruded side-profile body panels centered on Z=0
+    const makeExtrudedPanel = (
+      points: [number, number][],
+      thickness: number,
+      material: THREE.Material,
+    ): THREE.Mesh => {
+      const shape = new THREE.Shape();
+      points.forEach(([x, y], idx) => {
+        if (idx === 0) shape.moveTo(x, y);
+        else shape.lineTo(x, y);
+      });
+      shape.closePath();
+      const geo = new THREE.ExtrudeGeometry(shape, {
+        depth: thickness,
+        bevelEnabled: true,
+        bevelThickness: 0.015,
+        bevelSize: 0.012,
+        bevelSegments: 2,
+      });
+      geo.translate(0, 0, -thickness / 2);
+      return new THREE.Mesh(geo, material);
+    };
+
+    // Helper: true solid 3D curved fender arc in XY plane (PI/2 = 12 o'clock top of wheel)
+    const makeFenderArc = (
+      cx: number,
+      cy: number,
+      radius: number,
+      startAngle: number,
+      endAngle: number,
+      width: number,
+      material: THREE.Material,
+    ): THREE.Mesh => {
+      const innerR = radius - 0.032;
+      const shape = new THREE.Shape();
+      shape.absarc(0, 0, radius, startAngle, endAngle, false);
+      shape.absarc(0, 0, innerR, endAngle, startAngle, true);
+      shape.closePath();
+      const geo = new THREE.ExtrudeGeometry(shape, {
+        depth: width,
+        bevelEnabled: false,
+        curveSegments: seg(12, d),
+      });
+      geo.translate(0, 0, -width / 2);
+      const mesh = new THREE.Mesh(geo, material);
+      mesh.position.set(cx, cy, 0);
+      return mesh;
+    };
+
+    // Helper: curved exhaust pipe via TubeGeometry
+    const makeCurvedPipe = (
+      pts: [number, number, number][],
+      radius: number,
+      material: THREE.Material,
+    ): THREE.Mesh => {
+      const curve = new THREE.CatmullRomCurve3(
+        pts.map(([x, y, z]) => new THREE.Vector3(x, y, z)),
+      );
+      const geo = new THREE.TubeGeometry(curve, seg(14, d), radius, seg(6, d), false);
+      return new THREE.Mesh(geo, material);
+    };
+
+    // Helper: 17" wire-spoked wheel (Puch Maxi, Honda Hobbit) vs Cast alloy mag wheel (Derbi, Tomos)
+    const buildWheel = (xPos: number, kind: "spoked" | "mag5" | "mag6"): THREE.Group => {
       const wg = new THREE.Group();
       const tire = new THREE.Mesh(
-        new THREE.TorusGeometry(wheelRadius, 0.085, seg(8, d), seg(14, d)),
+        new THREE.TorusGeometry(wheelRadius, 0.075, seg(8, d), seg(18, d)),
         tireMat,
       );
       tire.castShadow = shadows;
       wg.add(tire);
 
       const rim = new THREE.Mesh(
-        new THREE.TorusGeometry(wheelRadius - 0.07, 0.03, seg(6, d), seg(12, d)),
-        rimMat,
+        new THREE.TorusGeometry(
+          wheelRadius - 0.068,
+          kind === "spoked" ? 0.024 : 0.032,
+          seg(6, d),
+          seg(16, d),
+        ),
+        kind === "spoked" ? rimMat : magMat,
       );
       wg.add(rim);
 
-      // Cross spokes so wheel spin is unmistakably visible!
-      const spokeGeo = new THREE.BoxGeometry(wheelRadius * 1.75, 0.03, 0.03);
-      const s1 = new THREE.Mesh(spokeGeo, rimMat);
-      const s2 = new THREE.Mesh(spokeGeo, rimMat);
-      s2.rotation.z = Math.PI / 2;
-      wg.add(s1, s2);
+      if (kind === "spoked") {
+        // Fine crossed steel spokes
+        const spokeGeo = new THREE.CylinderGeometry(
+          0.008,
+          0.008,
+          (wheelRadius - 0.07) * 2,
+          4,
+        );
+        for (let i = 0; i < 4; i++) {
+          const spoke = new THREE.Mesh(spokeGeo, rimMat);
+          spoke.rotation.z = (i * Math.PI) / 4;
+          wg.add(spoke);
+        }
+      } else {
+        const spokeCount = kind === "mag6" ? 6 : 5;
+        const spokeGeo = new THREE.BoxGeometry(
+          0.034,
+          wheelRadius - 0.08,
+          0.032,
+        );
+        for (let i = 0; i < spokeCount; i++) {
+          const angle = (i / spokeCount) * Math.PI * 2;
+          const spoke = new THREE.Mesh(spokeGeo, magMat);
+          spoke.position.set(
+            Math.cos(angle) * ((wheelRadius - 0.08) / 2),
+            Math.sin(angle) * ((wheelRadius - 0.08) / 2),
+            0,
+          );
+          spoke.rotation.z = angle - Math.PI / 2;
+          wg.add(spoke);
+        }
+      }
 
+      // Drum brake hub
       const hub = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.08, 0.08, 0.14, seg(8, d)),
-        chromeMat,
+        new THREE.CylinderGeometry(0.095, 0.095, 0.13, seg(10, d)),
+        kind === "spoked" ? chromeMat : magMat,
       );
       hub.rotation.x = Math.PI / 2;
       wg.add(hub);
@@ -1036,197 +1173,676 @@ export class ThreeRenderer {
       return wg;
     };
 
-    const rearWheel = buildWheel(-0.62);
-    const frontWheel = buildWheel(0.66);
+    const wheelKind: "spoked" | "mag5" | "mag6" =
+      make === "tomos-a35"
+        ? "mag6"
+        : make === "derbi-variant"
+          ? "mag5"
+          : "spoked";
+
+    const rearWheel = buildWheel(rearX, wheelKind);
+    const frontWheel = buildWheel(frontX, wheelKind);
     this.mopedGroup.add(rearWheel, frontWheel);
 
-    // Frame geometry tailored to each moped's real silhouette
     const frameGroup = new THREE.Group();
 
-    // Rear swingarm + lower cradle
-    const swingArm = new THREE.Mesh(
-      new THREE.BoxGeometry(0.75, 0.07, 0.14),
-      frameMat,
-    );
-    swingArm.position.set(-0.28, wheelRadius + 0.08, 0);
-    frameGroup.add(swingArm);
+    // Common steering geometry helpers
+    const buildForkPair = (
+      upperMat: THREE.Material,
+      lowerMat: THREE.Material,
+      withGaiters: boolean,
+    ) => {
+      const upperGeo = new THREE.CylinderGeometry(0.028, 0.028, 0.42, seg(6, d));
+      const lowerGeo = new THREE.CylinderGeometry(0.022, 0.022, 0.36, seg(6, d));
+      for (const fz of [-0.095, 0.095]) {
+        const upper = new THREE.Mesh(upperGeo, upperMat);
+        upper.rotation.z = 0.34;
+        upper.position.set(0.51, wheelRadius + 0.52, fz);
+        frameGroup.add(upper);
 
-    // Front forks (dual chrome tubes)
-    const forkGeo = new THREE.CylinderGeometry(0.03, 0.03, 0.72, seg(6, d));
-    for (const fz of [-0.09, 0.09]) {
-      const fork = new THREE.Mesh(forkGeo, chromeMat);
-      fork.rotation.z = 0.26;
-      fork.position.set(0.56, wheelRadius + 0.34, fz);
-      frameGroup.add(fork);
-    }
+        const lower = new THREE.Mesh(lowerGeo, lowerMat);
+        lower.rotation.z = 0.34;
+        lower.position.set(0.62, wheelRadius + 0.2, fz);
+        frameGroup.add(lower);
 
-    // Handlebars + rubber grips
-    const bar = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.024, 0.024, 0.56, seg(6, d)),
+        if (withGaiters) {
+          // Accordion rubber fork boots (Tomos A35 signature!)
+          const boot = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.04, 0.038, 0.18, seg(8, d)),
+            blackMetalMat,
+          );
+          boot.rotation.z = 0.34;
+          boot.position.set(0.57, wheelRadius + 0.36, fz);
+          frameGroup.add(boot);
+        }
+      }
+    };
+
+    const buildRearShocks = (
+      shockMat: THREE.Material,
+      topX: number,
+      topY: number,
+      thick = 0.036,
+    ) => {
+      const dx = topX - rearX;
+      const dy = topY - wheelRadius;
+      const len = Math.hypot(dx, dy);
+      const angle = Math.atan2(dy, dx) - Math.PI / 2;
+      const shockGeo = new THREE.CylinderGeometry(thick, thick, len, seg(7, d));
+      for (const sz of [-0.12, 0.12]) {
+        const shock = new THREE.Mesh(shockGeo, shockMat);
+        shock.position.set((rearX + topX) / 2, (wheelRadius + topY) / 2, sz);
+        shock.rotation.z = angle;
+        frameGroup.add(shock);
+      }
+    };
+
+    const buildFinnedCylinder = (
+      cx: number,
+      cy: number,
+      tiltZ: number,
+    ) => {
+      const engGroup = new THREE.Group();
+      const crankcase = new THREE.Mesh(
+        new THREE.BoxGeometry(0.28, 0.2, 0.22),
+        engineMat,
+      );
+      engGroup.add(crankcase);
+
+      const barrel = new THREE.Mesh(
+        new THREE.BoxGeometry(0.22, 0.15, 0.16),
+        engineMat,
+      );
+      barrel.position.set(0.2, 0.01, 0);
+      engGroup.add(barrel);
+
+      // Stacked cooling fins
+      const finGeo = new THREE.BoxGeometry(0.025, 0.2, 0.21);
+      for (let i = 0; i < 4; i++) {
+        const fin = new THREE.Mesh(finGeo, blackMetalMat);
+        fin.position.set(0.14 + i * 0.05, 0.01, 0);
+        engGroup.add(fin);
+      }
+      engGroup.position.set(cx, cy, 0);
+      engGroup.rotation.z = tiltZ;
+      frameGroup.add(engGroup);
+    };
+
+    // Pedals / footpeg crank
+    const pedalShaft = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.02, 0.02, 0.42, 6),
       chromeMat,
     );
-    bar.rotation.x = Math.PI / 2;
-    bar.position.set(0.42, wheelRadius + 0.74, 0);
-    frameGroup.add(bar);
+    pedalShaft.rotation.x = Math.PI / 2;
+    pedalShaft.position.set(-0.2, wheelRadius + 0.02, 0);
+    frameGroup.add(pedalShaft);
 
-    const gripGeo = new THREE.CylinderGeometry(0.034, 0.034, 0.13, seg(6, d));
-    for (const gz of [-0.24, 0.24]) {
+    // ── MODEL-SPECIFIC ACCURATE GEOMETRY ──────────────────────────────────
+    let headlightX = 0.6;
+    let headlightY = wheelRadius + 0.62;
+    let seatTopY = wheelRadius + 0.72;
+    let handleBarY = wheelRadius + 0.88;
+
+    if (make === "puch-maxi") {
+      // 1. PUCH MAXI S — Joe's iconic yellow pressed-steel monocoque step-through
+      const monocoque = makeExtrudedPanel(
+        [
+          [0.44, wheelRadius + 0.68], // steering head top
+          [0.54, wheelRadius + 0.6], // steering head front
+          [0.05, wheelRadius + 0.14], // bottom of sloped tank spine
+          [-0.25, wheelRadius + 0.14], // step-through lower cradle
+          [-0.36, wheelRadius + 0.56], // front of rear seat tower
+          [-0.64, wheelRadius + 0.56], // top of seat tower
+          [-0.92, wheelRadius + 0.42], // integrated rear fender arch
+          [-1.02, wheelRadius + 0.18], // rear fender tail tip
+          [-0.92, wheelRadius + 0.16],
+          [-0.78, wheelRadius + 0.36],
+          [-0.5, wheelRadius + 0.36],
+          [-0.34, wheelRadius + 0.06], // lower engine mount cradle
+          [0.06, wheelRadius + 0.04],
+          [0.44, wheelRadius + 0.52],
+        ],
+        0.14,
+        frameMat,
+      );
+      frameGroup.add(monocoque);
+
+      // Black & white diagonal PUCH tank stripe decal on both sides
+      const tankStripe = new THREE.Mesh(
+        new THREE.BoxGeometry(0.42, 0.045, 0.165),
+        accentMat,
+      );
+      tankStripe.position.set(0.26, wheelRadius + 0.42, 0);
+      tankStripe.rotation.z = 0.82;
+      frameGroup.add(tankStripe);
+
+      // Chrome fuel cap near top of tank spine
+      const gasCap = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.042, 0.042, 0.03, 8),
+        chromeMat,
+      );
+      gasCap.position.set(0.39, wheelRadius + 0.63, 0);
+      gasCap.rotation.z = -0.7;
+      frameGroup.add(gasCap);
+
+      // Signature Puch chrome U-trim rail along step-through cutout
+      for (const rz of [-0.085, 0.085]) {
+        const rail = makeCurvedPipe(
+          [
+            [-0.14, wheelRadius + 0.24, rz],
+            [-0.28, wheelRadius + 0.24, rz],
+            [-0.38, wheelRadius + 0.36, rz],
+            [-0.55, wheelRadius + 0.36, rz],
+          ],
+          0.014,
+          chromeMat,
+        );
+        frameGroup.add(rail);
+      }
+
+      // Rear swingarm + angled black coil rear shocks
+      const swingarm = new THREE.Mesh(
+        new THREE.BoxGeometry(0.46, 0.07, 0.2),
+        frameMat,
+      );
+      swingarm.position.set(-0.46, wheelRadius + 0.02, 0);
+      frameGroup.add(swingarm);
+      buildRearShocks(blackMetalMat, -0.5, wheelRadius + 0.52, 0.036);
+
+      // Flat-topped classic Puch Maxi black bench seat
+      const seat = new THREE.Mesh(
+        new THREE.BoxGeometry(0.56, 0.17, 0.26),
+        seatMat,
+      );
+      seat.position.set(-0.48, wheelRadius + 0.66, 0);
+      frameGroup.add(seat);
+      seatTopY = wheelRadius + 0.74;
+
+      // Chrome tubular rear luggage rack behind seat
+      const rack = new THREE.Mesh(
+        new THREE.BoxGeometry(0.32, 0.035, 0.24),
+        chromeMat,
+      );
+      rack.position.set(-0.88, wheelRadius + 0.55, 0);
+      frameGroup.add(rack);
+
+      // Forks (yellow upper legs + chrome lower sliders) + matte black front fender
+      buildForkPair(frameMat, chromeMat, false);
+      frameGroup.add(
+        makeFenderArc(frontX, wheelRadius, wheelRadius + 0.1, 0.85, 2.75, 0.16, blackMetalMat),
+      );
+
+      // Tall swept-back chrome riser handlebars
+      handleBarY = wheelRadius + 0.94;
+      const riserBar = makeCurvedPipe(
+        [
+          [0.44, wheelRadius + 0.72, -0.05],
+          [0.36, handleBarY, -0.22],
+          [0.28, handleBarY - 0.02, -0.32],
+        ],
+        0.02,
+        chromeMat,
+      );
+      const riserBarR = makeCurvedPipe(
+        [
+          [0.44, wheelRadius + 0.72, 0.05],
+          [0.36, handleBarY, 0.22],
+          [0.28, handleBarY - 0.02, 0.32],
+        ],
+        0.02,
+        chromeMat,
+      );
+      frameGroup.add(riserBar, riserBarR);
+
+      // Round black Puch headlight bucket + chrome bezel + top VDO speedometer pod
+      headlightX = 0.62;
+      headlightY = wheelRadius + 0.66;
+      const bucket = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.11, 0.085, 0.15, seg(10, d)),
+        blackMetalMat,
+      );
+      bucket.rotation.z = Math.PI / 2;
+      bucket.position.set(headlightX - 0.04, headlightY, 0);
+      frameGroup.add(bucket);
+
+      const speedoPod = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.055, 0.055, 0.06, 8),
+        blackMetalMat,
+      );
+      speedoPod.position.set(headlightX - 0.08, headlightY + 0.12, 0);
+      frameGroup.add(speedoPod);
+
+      // Horizontal E50 engine + low straight Tecno/chrome exhaust
+      buildFinnedCylinder(-0.02, wheelRadius - 0.02, 0);
+      const exhaust = makeCurvedPipe(
+        [
+          [0.14, wheelRadius - 0.08, 0.14],
+          [-0.1, wheelRadius - 0.12, 0.16],
+          [-0.86, wheelRadius - 0.04, 0.18],
+        ],
+        0.042,
+        chromeMat,
+      );
+      frameGroup.add(exhaust);
+
+      // Rear taillight
+      const tl = new THREE.Mesh(
+        new THREE.BoxGeometry(0.12, 0.09, 0.13),
+        new THREE.MeshStandardMaterial({
+          color: 0xef4444,
+          emissive: 0xef4444,
+          emissiveIntensity: 1.9,
+        }),
+      );
+      tl.position.set(-1.02, wheelRadius + 0.42, 0);
+      frameGroup.add(tl);
+    } else if (make === "honda-hobbit") {
+      // 2. HONDA HOBBIT PA50 — Slim red step-through U-frame + cream-white downtube side covers + shrouded white shocks
+      const uFrame = makeExtrudedPanel(
+        [
+          [0.44, wheelRadius + 0.66],
+          [0.52, wheelRadius + 0.59],
+          [0.06, wheelRadius + 0.08],
+          [-0.22, wheelRadius + 0.08],
+          [-0.4, wheelRadius + 0.54],
+          [-0.54, wheelRadius + 0.54],
+          [-0.36, wheelRadius + 0.02],
+          [0.06, wheelRadius + 0.02],
+          [0.44, wheelRadius + 0.54],
+        ],
+        0.11,
+        frameMat,
+      );
+      frameGroup.add(uFrame);
+
+      // Signature CREAM-WHITE tapered Honda downtube side covers!
+      const sideCover = makeExtrudedPanel(
+        [
+          [0.41, wheelRadius + 0.6],
+          [0.48, wheelRadius + 0.52],
+          [0.08, wheelRadius + 0.11],
+          [-0.16, wheelRadius + 0.11],
+          [-0.14, wheelRadius + 0.19],
+          [0.06, wheelRadius + 0.19],
+        ],
+        0.155,
+        accentMat,
+      );
+      frameGroup.add(sideCover);
+
+      // Slotted red Honda front horn/fork shield plate
+      const hornShield = new THREE.Mesh(
+        new THREE.BoxGeometry(0.06, 0.28, 0.2),
+        frameMat,
+      );
+      hornShield.rotation.z = 0.34;
+      hornShield.position.set(0.55, wheelRadius + 0.52, 0);
+      frameGroup.add(hornShield);
+
+      // Red curved rear fender + flat horizontal body-colored rear rack + chrome side rails
+      frameGroup.add(
+        makeFenderArc(rearX, wheelRadius, wheelRadius + 0.1, 0.95, 2.95, 0.16, frameMat),
+      );
+      const rearRack = new THREE.Mesh(
+        new THREE.BoxGeometry(0.46, 0.055, 0.24),
+        frameMat,
+      );
+      rearRack.position.set(-0.74, wheelRadius + 0.58, 0);
+      frameGroup.add(rearRack);
+
+      for (const rz of [-0.14, 0.14]) {
+        const rackRail = makeCurvedPipe(
+          [
+            [-0.52, wheelRadius + 0.58, rz],
+            [-0.96, wheelRadius + 0.58, rz],
+            [-0.94, wheelRadius + 0.22, rz],
+            [-0.66, wheelRadius + 0.2, rz],
+          ],
+          0.015,
+          chromeMat,
+        );
+        frameGroup.add(rackRail);
+      }
+
+      // Signature chunky CREAM-WHITE shrouded Honda rear shocks!
+      buildRearShocks(accentMat, -0.52, wheelRadius + 0.54, 0.048);
+
+      // Bulbous short solo Hobbit saddle
+      const seat = new THREE.Mesh(
+        new THREE.BoxGeometry(0.38, 0.17, 0.27),
+        seatMat,
+      );
+      seat.position.set(-0.46, wheelRadius + 0.67, 0);
+      frameGroup.add(seat);
+      seatTopY = wheelRadius + 0.75;
+
+      // Red front forks + red front fender
+      buildForkPair(frameMat, chromeMat, false);
+      frameGroup.add(
+        makeFenderArc(frontX, wheelRadius, wheelRadius + 0.1, 0.9, 2.65, 0.15, frameMat),
+      );
+
+      // Swept chrome handlebars
+      handleBarY = wheelRadius + 0.92;
+      for (const zSign of [-1, 1]) {
+        const bar = makeCurvedPipe(
+          [
+            [0.44, wheelRadius + 0.7, zSign * 0.04],
+            [0.36, handleBarY, zSign * 0.22],
+            [0.27, handleBarY - 0.03, zSign * 0.31],
+          ],
+          0.02,
+          chromeMat,
+        );
+        frameGroup.add(bar);
+      }
+
+      // Square/rectangular Hobbit PA50 headlight cowl
+      headlightX = 0.6;
+      headlightY = wheelRadius + 0.74;
+      const cowl = new THREE.Mesh(
+        new THREE.BoxGeometry(0.16, 0.16, 0.2),
+        frameMat,
+      );
+      cowl.position.set(headlightX - 0.05, headlightY, 0);
+      frameGroup.add(cowl);
+
+      // Horizontal CVT drive arm + sweeping upturned black race expansion pipe (Crank Pipes style!)
+      const cvtCover = new THREE.Mesh(
+        new THREE.BoxGeometry(0.72, 0.16, 0.16),
+        blackMetalMat,
+      );
+      cvtCover.position.set(-0.34, wheelRadius - 0.02, -0.06);
+      frameGroup.add(cvtCover);
+      buildFinnedCylinder(0.08, wheelRadius - 0.03, 0);
+
+      const racePipe = makeCurvedPipe(
+        [
+          [0.18, wheelRadius - 0.11, 0.12],
+          [-0.08, wheelRadius - 0.16, 0.16],
+          [-0.5, wheelRadius - 0.08, 0.18],
+          [-0.92, wheelRadius + 0.18, 0.19],
+        ],
+        0.052,
+        blackMetalMat,
+      );
+      frameGroup.add(racePipe);
+
+      const tl = new THREE.Mesh(
+        new THREE.BoxGeometry(0.11, 0.11, 0.14),
+        new THREE.MeshStandardMaterial({
+          color: 0xef4444,
+          emissive: 0xef4444,
+          emissiveIntensity: 1.9,
+        }),
+      );
+      tl.position.set(-1.02, wheelRadius + 0.42, 0);
+      frameGroup.add(tl);
+    } else if (make === "derbi-variant") {
+      // 3. DERBI VARIANT SL — Sharp angular Spanish monocoque with flat lower rocker & wide flat-top rear body!
+      const derbiBody = makeExtrudedPanel(
+        [
+          [0.44, wheelRadius + 0.72], // tall sharp steering head
+          [0.53, wheelRadius + 0.68],
+          [0.12, wheelRadius + 0.12], // steep crisp downtube
+          [-0.28, wheelRadius + 0.12], // long flat horizontal floorboard
+          [-0.4, wheelRadius + 0.56], // sharp angled rear rise
+          [-0.78, wheelRadius + 0.56], // signature wide flat horizontal top under seat!
+          [-0.98, wheelRadius + 0.44], // crisp rear fender arc
+          [-1.08, wheelRadius + 0.22],
+          [-0.96, wheelRadius + 0.2],
+          [-0.84, wheelRadius + 0.39],
+          [-0.64, wheelRadius + 0.4],
+          [-0.46, wheelRadius + 0.06], // bottom of trapezoidal side panel
+          [0.14, wheelRadius + 0.05],
+          [0.44, wheelRadius + 0.56],
+        ],
+        0.16,
+        frameMat,
+      );
+      frameGroup.add(derbiBody);
+
+      // Black DERBI floorboard strip + gold SL crest accent on rear trapezoidal panel
+      const rockerDecal = new THREE.Mesh(
+        new THREE.BoxGeometry(0.36, 0.045, 0.185),
+        accentMat,
+      );
+      rockerDecal.position.set(-0.1, wheelRadius + 0.1, 0);
+      frameGroup.add(rockerDecal);
+
+      const crest = new THREE.Mesh(
+        new THREE.BoxGeometry(0.14, 0.14, 0.185),
+        secondaryMat,
+      );
+      crest.position.set(-0.52, wheelRadius + 0.34, 0);
+      frameGroup.add(crest);
+
+      // Long flat sleek two-up black bench seat flush along the flat top
+      const seat = new THREE.Mesh(
+        new THREE.BoxGeometry(0.68, 0.12, 0.25),
+        seatMat,
+      );
+      seat.position.set(-0.62, wheelRadius + 0.64, 0);
+      frameGroup.add(seat);
+      seatTopY = wheelRadius + 0.7;
+
+      // Chrome coil-over rear shocks + black swingarm
+      const swingarm = new THREE.Mesh(
+        new THREE.BoxGeometry(0.5, 0.065, 0.19),
+        blackMetalMat,
+      );
+      swingarm.position.set(-0.46, wheelRadius + 0.02, 0);
+      frameGroup.add(swingarm);
+      buildRearShocks(chromeMat, -0.58, wheelRadius + 0.54, 0.036);
+
+      // Tall aggressive BLACK upper fork legs + silver lowers + white front fender
+      buildForkPair(blackMetalMat, chromeMat, false);
+      frameGroup.add(
+        makeFenderArc(frontX, wheelRadius, wheelRadius + 0.1, 0.85, 2.7, 0.16, frameMat),
+      );
+
+      // Low aggressive street bars (distinct from Maxi/Hobbit high risers!)
+      handleBarY = wheelRadius + 0.82;
+      const streetBar = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.022, 0.022, 0.62, seg(6, d)),
+        blackMetalMat,
+      );
+      streetBar.rotation.x = Math.PI / 2;
+      streetBar.position.set(0.4, handleBarY, 0);
+      frameGroup.add(streetBar);
+
+      // Compact round chrome headlight tucked tight against the tall forks
+      headlightX = 0.61;
+      headlightY = wheelRadius + 0.68;
+      const hlShell = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.105, 0.085, 0.14, seg(10, d)),
+        chromeMat,
+      );
+      hlShell.rotation.z = Math.PI / 2;
+      hlShell.position.set(headlightX - 0.04, headlightY, 0);
+      frameGroup.add(hlShell);
+
+      // Exposed Derbi engine + golden variator clutch bell + black Estoril expansion chamber!
+      buildFinnedCylinder(0.04, wheelRadius - 0.02, -0.1);
+      const variatorBell = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.095, 0.095, 0.06, seg(10, d)),
+        secondaryMat,
+      );
+      variatorBell.rotation.x = Math.PI / 2;
+      variatorBell.position.set(-0.22, wheelRadius - 0.02, 0.13);
+      frameGroup.add(variatorBell);
+
+      const estorilPipe = makeCurvedPipe(
+        [
+          [0.14, wheelRadius - 0.12, 0.12],
+          [-0.12, wheelRadius - 0.16, 0.15],
+          [-0.52, wheelRadius - 0.06, 0.17],
+          [-0.94, wheelRadius + 0.08, 0.18],
+        ],
+        0.056,
+        blackMetalMat,
+      );
+      frameGroup.add(estorilPipe);
+
+      const tl = new THREE.Mesh(
+        new THREE.BoxGeometry(0.11, 0.14, 0.14),
+        new THREE.MeshStandardMaterial({
+          color: 0xef4444,
+          emissive: 0xef4444,
+          emissiveIntensity: 2,
+        }),
+      );
+      tl.position.set(-1.04, wheelRadius + 0.44, 0);
+      frameGroup.add(tl);
+    } else {
+      // 4. TOMOS A35 — Mili's metallic silver A35 with straight diagonal box-tank, aero nose fairing & rubber fork boots!
+      const tomosFrame = makeExtrudedPanel(
+        [
+          [0.44, wheelRadius + 0.64], // top of diagonal tank spar
+          [0.52, wheelRadius + 0.56],
+          [0.06, wheelRadius + 0.16], // straight box tank bottom
+          [-0.22, wheelRadius + 0.16],
+          [-0.38, wheelRadius + 0.54], // narrow seat tube rise
+          [-0.5, wheelRadius + 0.54],
+          [-0.36, wheelRadius + 0.08],
+          [0.08, wheelRadius + 0.08],
+          [0.44, wheelRadius + 0.5],
+        ],
+        0.14,
+        frameMat,
+      );
+      frameGroup.add(tomosFrame);
+
+      // Sleek horizontal silver A35 side-cover fairing panels over the rear chain/airbox
+      const sideFairing = makeExtrudedPanel(
+        [
+          [-0.12, wheelRadius + 0.24],
+          [-0.78, wheelRadius + 0.22],
+          [-0.84, wheelRadius + 0.14],
+          [-0.12, wheelRadius + 0.12],
+        ],
+        0.19,
+        frameMat,
+      );
+      frameGroup.add(sideFairing);
+
+      // Silver front & rear fenders hugging the 16" cast mag wheels
+      frameGroup.add(
+        makeFenderArc(rearX, wheelRadius, wheelRadius + 0.1, 0.95, 2.95, 0.17, frameMat),
+        makeFenderArc(frontX, wheelRadius, wheelRadius + 0.1, 0.85, 2.7, 0.16, frameMat),
+      );
+
+      // Angled chrome coil rear shocks
+      buildRearShocks(chromeMat, -0.46, wheelRadius + 0.52, 0.036);
+
+      // Curved compact black Tomos saddle + rear tail rack
+      const seat = new THREE.Mesh(
+        new THREE.BoxGeometry(0.46, 0.16, 0.26),
+        seatMat,
+      );
+      seat.position.set(-0.5, wheelRadius + 0.64, 0);
+      seat.rotation.z = -0.06;
+      frameGroup.add(seat);
+      seatTopY = wheelRadius + 0.72;
+
+      const rack = new THREE.Mesh(
+        new THREE.BoxGeometry(0.26, 0.04, 0.22),
+        blackMetalMat,
+      );
+      rack.position.set(-0.84, wheelRadius + 0.52, 0);
+      frameGroup.add(rack);
+
+      // Telescopic forks WITH signature ribbed black rubber fork gaiters!
+      buildForkPair(chromeMat, chromeMat, true);
+
+      // Signature aerodynamic sculpted silver Tomos nose fairing / windscreen cowl!
+      const noseFairing = makeExtrudedPanel(
+        [
+          [0.48, wheelRadius + 0.56],
+          [0.64, wheelRadius + 0.58],
+          [0.66, wheelRadius + 0.78],
+          [0.54, wheelRadius + 0.98], // sweeping café windscreen peak!
+          [0.45, wheelRadius + 0.94],
+          [0.44, wheelRadius + 0.7],
+        ],
+        0.24,
+        frameMat,
+      );
+      frameGroup.add(noseFairing);
+
+      // Amber front turn signal pods flanking the Tomos fairing
+      const signalGeo = new THREE.BoxGeometry(0.06, 0.06, 0.07);
+      for (const sz of [-0.15, 0.15]) {
+        const pod = new THREE.Mesh(signalGeo, secondaryMat);
+        pod.position.set(0.56, wheelRadius + 0.68, sz);
+        frameGroup.add(pod);
+      }
+
+      // Chrome bars tucked behind the fairing
+      handleBarY = wheelRadius + 0.86;
+      const bar = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.022, 0.022, 0.58, seg(6, d)),
+        blackMetalMat,
+      );
+      bar.rotation.x = Math.PI / 2;
+      bar.position.set(0.38, handleBarY, 0);
+      frameGroup.add(bar);
+
+      headlightX = 0.66;
+      headlightY = wheelRadius + 0.68;
+
+      // Slightly upward-angled black A35 reed-valve engine + straight black low exhaust
+      buildFinnedCylinder(0.02, wheelRadius + 0.01, 0.32);
+      const tomosPipe = makeCurvedPipe(
+        [
+          [0.1, wheelRadius - 0.08, 0.14],
+          [-0.14, wheelRadius - 0.11, 0.16],
+          [-0.88, wheelRadius - 0.02, 0.17],
+        ],
+        0.044,
+        blackMetalMat,
+      );
+      frameGroup.add(tomosPipe);
+
+      const tl = new THREE.Mesh(
+        new THREE.BoxGeometry(0.1, 0.1, 0.14),
+        new THREE.MeshStandardMaterial({
+          color: 0xef4444,
+          emissive: 0xef4444,
+          emissiveIntensity: 1.9,
+        }),
+      );
+      tl.position.set(-0.98, wheelRadius + 0.4, 0);
+      frameGroup.add(tl);
+    }
+
+    // Rubber handlebar grips
+    const gripGeo = new THREE.CylinderGeometry(0.032, 0.032, 0.13, seg(6, d));
+    for (const gz of [-0.27, 0.27]) {
       const grip = new THREE.Mesh(gripGeo, tireMat);
       grip.rotation.x = Math.PI / 2;
-      grip.position.set(0.42, wheelRadius + 0.74, gz);
+      grip.position.set(
+        make === "derbi-variant" || make === "tomos-a35" ? 0.39 : 0.28,
+        handleBarY - (make === "derbi-variant" || make === "tomos-a35" ? 0 : 0.02),
+        gz,
+      );
       frameGroup.add(grip);
     }
 
-    // Fenders
-    const rearFender = new THREE.Mesh(
-      new THREE.BoxGeometry(0.46, 0.05, 0.19),
-      accentMat,
-    );
-    rearFender.position.set(-0.66, wheelRadius + 0.44, 0);
-    rearFender.rotation.z = 0.25;
-    frameGroup.add(rearFender);
-
-    const frontFender = new THREE.Mesh(
-      new THREE.BoxGeometry(0.38, 0.05, 0.18),
-      accentMat,
-    );
-    frontFender.position.set(0.68, wheelRadius + 0.42, 0);
-    frontFender.rotation.z = -0.25;
-    frameGroup.add(frontFender);
-
-    if (stats.frameStyle === "step-through") {
-      // Puch Maxi classic slanted step-through mono-tube
-      const mainBeam = new THREE.Mesh(
-        new THREE.BoxGeometry(1.1, 0.12, 0.13),
-        frameMat,
-      );
-      mainBeam.rotation.z = 0.32;
-      mainBeam.position.set(0.06, wheelRadius + 0.36, 0);
-      frameGroup.add(mainBeam);
-
-      const stripe = new THREE.Mesh(
-        new THREE.BoxGeometry(0.85, 0.04, 0.15),
-        accentMat,
-      );
-      stripe.rotation.z = 0.32;
-      stripe.position.set(0.06, wheelRadius + 0.38, 0);
-      frameGroup.add(stripe);
-    } else if (stats.frameStyle === "top-bar") {
-      // Honda Hobbit PA50 with signature horizontal tank & front rack
-      const topTank = new THREE.Mesh(
-        new THREE.BoxGeometry(0.74, 0.18, 0.2),
-        frameMat,
-      );
-      topTank.position.set(0.14, wheelRadius + 0.56, 0);
-      frameGroup.add(topTank);
-
-      const badge = new THREE.Mesh(
-        new THREE.BoxGeometry(0.42, 0.06, 0.22),
-        accentMat,
-      );
-      badge.position.set(0.14, wheelRadius + 0.56, 0);
-      frameGroup.add(badge);
-    } else if (stats.frameStyle === "sport") {
-      // Derbi Variant sporty top tank + racing front fairing
-      const sportTank = new THREE.Mesh(
-        new THREE.BoxGeometry(0.76, 0.2, 0.22),
-        frameMat,
-      );
-      sportTank.rotation.z = -0.1;
-      sportTank.position.set(0.12, wheelRadius + 0.54, 0);
-      frameGroup.add(sportTank);
-
-      const fairing = new THREE.Mesh(
-        new THREE.BoxGeometry(0.24, 0.34, 0.28),
-        accentMat,
-      );
-      fairing.rotation.z = -0.35;
-      fairing.position.set(0.6, wheelRadius + 0.66, 0);
-      frameGroup.add(fairing);
-    } else {
-      // Tomos A35 sturdy tubular frame + steel rear luggage rack
-      const beam = new THREE.Mesh(
-        new THREE.BoxGeometry(1.02, 0.15, 0.16),
-        frameMat,
-      );
-      beam.rotation.z = 0.22;
-      beam.position.set(0.05, wheelRadius + 0.42, 0);
-      frameGroup.add(beam);
-
-      const rack = new THREE.Mesh(
-        new THREE.BoxGeometry(0.42, 0.05, 0.26),
-        chromeMat,
-      );
-      rack.position.set(-0.74, wheelRadius + 0.62, 0);
-      frameGroup.add(rack);
-    }
-
-    // Seat post & cushioned banana seat
-    const seatTube = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.038, 0.038, 0.52, seg(6, d)),
-      frameMat,
-    );
-    seatTube.position.set(-0.28, wheelRadius + 0.46, 0);
-    frameGroup.add(seatTube);
-
-    const seat = new THREE.Mesh(
-      new THREE.BoxGeometry(0.56, 0.11, 0.25),
-      new THREE.MeshLambertMaterial({ color: colors.seat }),
-    );
-    seat.position.set(-0.32, wheelRadius + 0.74, 0);
-    frameGroup.add(seat);
-
-    // Finned 2-stroke engine block
-    const engine = new THREE.Mesh(
-      new THREE.BoxGeometry(0.36, 0.26, 0.22),
-      new THREE.MeshStandardMaterial({
-        color: 0x6b7280,
-        roughness: 0.4,
-        metalness: 0.65,
-      }),
-    );
-    engine.position.set(-0.08, wheelRadius + 0.08, 0);
-    frameGroup.add(engine);
-
-    // Chrome expansion chamber exhaust pipe
-    const chamber = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.065, 0.04, 0.58, seg(8, d)),
-      chromeMat,
-    );
-    chamber.rotation.z = Math.PI / 2 - 0.14;
-    chamber.position.set(-0.56, wheelRadius + 0.16, 0.16);
-    frameGroup.add(chamber);
-
-    const stinger = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.03, 0.035, 0.24, seg(6, d)),
-      chromeMat,
-    );
-    stinger.rotation.z = Math.PI / 2 - 0.25;
-    stinger.position.set(-0.92, wheelRadius + 0.24, 0.16);
-    frameGroup.add(stinger);
-
-    // Headlight bucket + bright lens + road beam cone
-    const hlBucket = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.11, 0.09, 0.14, seg(8, d)),
-      tireMat,
-    );
-    hlBucket.rotation.z = Math.PI / 2;
-    hlBucket.position.set(0.64, wheelRadius + 0.6, 0);
-    frameGroup.add(hlBucket);
-
+    // Glowing headlight lens + road beam cone
     const hlLens = new THREE.Mesh(
-      new THREE.SphereGeometry(0.095, seg(8, d), seg(8, d)),
+      new THREE.SphereGeometry(0.085, seg(8, d), seg(8, d)),
       new THREE.MeshStandardMaterial({
         color: 0xfef3c7,
         emissive: 0xfde68a,
-        emissiveIntensity: 2.2,
+        emissiveIntensity: 2.3,
       }),
     );
-    hlLens.position.set(0.71, wheelRadius + 0.6, 0);
+    hlLens.position.set(headlightX + 0.03, headlightY, 0);
     frameGroup.add(hlLens);
 
-    const beamGeo = new THREE.ConeGeometry(0.65, 2.8, 8, 1, true);
-    beamGeo.rotateZ(Math.PI / 2 + 0.16);
+    const beamGeo = new THREE.ConeGeometry(0.66, 2.9, 8, 1, true);
+    beamGeo.rotateZ(Math.PI / 2 + 0.18);
     const beamMat = new THREE.MeshBasicMaterial({
       color: 0xfef08a,
       transparent: true,
@@ -1235,52 +1851,45 @@ export class ThreeRenderer {
       side: THREE.DoubleSide,
     });
     const headlightBeam = new THREE.Mesh(beamGeo, beamMat);
-    headlightBeam.position.set(2.05, wheelRadius + 0.34, 0);
+    headlightBeam.position.set(headlightX + 1.38, headlightY - 0.28, 0);
     frameGroup.add(headlightBeam);
-
-    // Glowing taillight
-    const taillight = new THREE.Mesh(
-      new THREE.BoxGeometry(0.08, 0.1, 0.14),
-      new THREE.MeshStandardMaterial({
-        color: 0xef4444,
-        emissive: 0xef4444,
-        emissiveIntensity: 2,
-      }),
-    );
-    taillight.position.set(-0.84, wheelRadius + 0.56, 0);
-    frameGroup.add(taillight);
 
     this.mopedGroup.add(frameGroup);
 
-    // Articulated Rider (hoodie, backpack, both arms & legs, helmet + visor)
+    // Articulated Rider seated cleanly on each moped's real seat height & handlebar reach
     const riderGroup = new THREE.Group();
     const jacketMat = new THREE.MeshLambertMaterial({ color: colors.jacket });
     const jeansMat = new THREE.MeshLambertMaterial({ color: 0x1e3a5f });
     const shoeMat = new THREE.MeshLambertMaterial({ color: 0xfef08a });
+    const helmetMat = new THREE.MeshStandardMaterial({
+      color: colors.helmet,
+      roughness: 0.26,
+      metalness: 0.45,
+    });
 
+    const riderX = make === "derbi-variant" ? -0.46 : -0.38;
     const torso = new THREE.Mesh(
       new THREE.BoxGeometry(0.28, 0.46, 0.28),
       jacketMat,
     );
-    torso.rotation.z = -0.18;
-    torso.position.set(-0.22, wheelRadius + 1.04, 0);
+    torso.rotation.z = make === "derbi-variant" ? -0.28 : -0.16;
+    torso.position.set(riderX, seatTopY + 0.26, 0);
     riderGroup.add(torso);
 
-    // Yellow Pedal Code Army backpack!
+    // Pedal Code Army yellow backpack
     const backpack = new THREE.Mesh(
-      new THREE.BoxGeometry(0.14, 0.34, 0.24),
+      new THREE.BoxGeometry(0.14, 0.33, 0.24),
       new THREE.MeshLambertMaterial({ color: 0xffd700 }),
     );
-    backpack.rotation.z = -0.18;
-    backpack.position.set(-0.38, wheelRadius + 1.06, 0);
+    backpack.rotation.z = make === "derbi-variant" ? -0.28 : -0.16;
+    backpack.position.set(riderX - 0.16, seatTopY + 0.28, 0);
     riderGroup.add(backpack);
 
-    // Helmet + glossy dark visor
     const helmet = new THREE.Mesh(
       new THREE.SphereGeometry(0.18, seg(10, d), seg(10, d)),
-      accentMat,
+      helmetMat,
     );
-    helmet.position.set(-0.14, wheelRadius + 1.44, 0);
+    helmet.position.set(riderX + 0.09, seatTopY + 0.64, 0);
     riderGroup.add(helmet);
 
     const visor = new THREE.Mesh(
@@ -1291,29 +1900,29 @@ export class ThreeRenderer {
         metalness: 0.9,
       }),
     );
-    visor.position.set(-0.01, wheelRadius + 1.45, 0);
+    visor.position.set(riderX + 0.22, seatTopY + 0.65, 0);
     riderGroup.add(visor);
 
-    // Both arms reaching forward to handlebars
-    const armGeo = new THREE.CylinderGeometry(0.045, 0.04, 0.56, seg(6, d));
-    for (const az of [-0.18, 0.18]) {
+    // Arms reaching cleanly from shoulders to handlebars
+    const armGeo = new THREE.CylinderGeometry(0.044, 0.038, 0.6, seg(6, d));
+    for (const az of [-0.19, 0.19]) {
       const arm = new THREE.Mesh(armGeo, jacketMat);
-      arm.rotation.z = Math.PI / 2 + 0.36;
-      arm.position.set(0.12, wheelRadius + 0.95, az);
+      arm.rotation.z = Math.PI / 2 + 0.28;
+      arm.position.set(riderX + 0.36, seatTopY + 0.22, az);
       riderGroup.add(arm);
     }
 
-    // Both legs + skate shoes on pedals
-    const legGeo = new THREE.CylinderGeometry(0.055, 0.048, 0.46, seg(6, d));
+    // Legs & skate shoes reaching down to pedals
+    const legGeo = new THREE.CylinderGeometry(0.055, 0.048, 0.48, seg(6, d));
     const shoeGeo = new THREE.BoxGeometry(0.16, 0.08, 0.1);
     for (const lz of [-0.15, 0.15]) {
       const leg = new THREE.Mesh(legGeo, jeansMat);
-      leg.rotation.z = 0.42;
-      leg.position.set(-0.24, wheelRadius + 0.58, lz);
+      leg.rotation.z = 0.4;
+      leg.position.set(riderX + 0.06, seatTopY - 0.18, lz);
       riderGroup.add(leg);
 
       const shoe = new THREE.Mesh(shoeGeo, shoeMat);
-      shoe.position.set(-0.1, wheelRadius + 0.34, lz);
+      shoe.position.set(riderX + 0.2, wheelRadius + 0.05, lz);
       riderGroup.add(shoe);
     }
 
@@ -1344,7 +1953,11 @@ export class ThreeRenderer {
 
     if (shadows) {
       this.mopedGroup.traverse((obj) => {
-        if (obj instanceof THREE.Mesh && obj !== headlightBeam && obj !== magnetHalo) {
+        if (
+          obj instanceof THREE.Mesh &&
+          obj !== headlightBeam &&
+          obj !== magnetHalo
+        ) {
           obj.castShadow = true;
         }
       });
