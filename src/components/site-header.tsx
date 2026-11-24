@@ -11,7 +11,7 @@ const NAV_LINKS = [
   { href: "/stable", label: "The Stable" },
   { href: "/shop", label: "Shop" },
   { href: "/members", label: "The Dudes" },
-  { href: "/game", label: "City Runner" },
+  { href: "/game", label: "Arcade" },
 ] as const;
 
 type CartHookCompat = {
