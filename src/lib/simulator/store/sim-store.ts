@@ -24,6 +24,8 @@ import type {
   RideSummary,
   RideTelemetrySnapshot,
   RouteId,
+  RunnerRunResult,
+  RunnerRunSummary,
   SimAppSnapshot,
   SimEvent,
   SimPhase,
@@ -188,6 +190,7 @@ interface UiState {
   phase: SimPhase;
   save: SimSaveState;
   lastRideSummary: RideSummary | null;
+  lastRunnerSummary: RunnerRunSummary | null;
   selectedTool: ToolId;
   lastToolReading: ToolReading | null;
   plugViewerColor: SimAppSnapshot["plugViewerColor"];
@@ -206,6 +209,7 @@ function buildSnapshot(ui: UiState, ride: RideTelemetrySnapshot | null): SimAppS
     save: ui.save,
     ride,
     lastRideSummary: ui.lastRideSummary,
+    lastRunnerSummary: ui.lastRunnerSummary,
     selectedTool: ui.selectedTool,
     lastToolReading: ui.lastToolReading,
     plugViewerColor: ui.plugViewerColor,
@@ -247,6 +251,7 @@ class SimStoreImpl {
       phase: "GARAGE",
       save,
       lastRideSummary: null,
+      lastRunnerSummary: null,
       selectedTool: "visual",
       lastToolReading: null,
       plugViewerColor: null,
@@ -277,6 +282,7 @@ class SimStoreImpl {
         phase: "GARAGE",
         save: createStarterSave(),
         lastRideSummary: null,
+        lastRunnerSummary: null,
         selectedTool: "visual",
         lastToolReading: null,
         plugViewerColor: null,
@@ -1004,6 +1010,65 @@ class SimStoreImpl {
     this.patchUi({ lastRideSummary: null, phase });
   };
 
+  completeRunnerRun = (result: RunnerRunResult): void => {
+    this.ensureInit();
+    const { summary } = result;
+    const save = this.ui.save;
+    const current = save.bikes.find((b) => b.id === summary.bikeId) ?? getActiveBike(save);
+    if (current) {
+      const bike = structuredClone(current);
+      bike.odometerM += result.odometerDeltaM;
+      for (const key of Object.keys(bike.wear) as (keyof OwnedBike["wear"])[]) {
+        bike.wear[key] = clampWear(bike.wear[key] + result.wearDelta[key]);
+      }
+      if (result.plugColor) bike.lastPlugColor = result.plugColor;
+      reconcileFaults(bike, Date.now());
+      this.replaceBike(bike);
+    }
+
+    const breakdown = summary.endReason === "seized" || summary.endReason === "stalled";
+    const stats = {
+      ...this.ui.save.stats,
+      totalRides: this.ui.save.stats.totalRides + (summary.distanceM > 30 ? 1 : 0),
+      totalBreakdowns: this.ui.save.stats.totalBreakdowns + (breakdown ? 1 : 0),
+      seizesSaved: this.ui.save.stats.seizesSaved + result.seizesSaved,
+    };
+
+    this.ui = {
+      ...this.ui,
+      save: {
+        ...this.ui.save,
+        cash: Math.max(0, this.ui.save.cash + summary.cashEarned),
+        rep: this.ui.save.rep + summary.repEarned,
+        stats,
+      },
+      lastRunnerSummary: summary,
+    };
+
+    if (result.seizesSaved > 0) this.awardBadge("clutch-hero");
+    if (summary.topSpeedMph >= FULL_SEND_MPH) this.awardBadge("full-send");
+
+    if (summary.distanceM > 20 || breakdown) {
+      const reasonLabel: Record<RunnerRunSummary["endReason"], string> = {
+        crashed: "Wiped out in traffic",
+        seized: "Seized top end",
+        stalled: "Stalled out on the street",
+        aborted: "Pulled off the street",
+      };
+      const body = [
+        `Score ${summary.score.toLocaleString()} (${summary.distanceM}m, top ${summary.topSpeedMph} mph, x${summary.maxCombo} combo).`,
+        ...summary.notes,
+      ].join(" ");
+      this.journal(summary.bikeId, `Street Runner: ${reasonLabel[summary.endReason]}`, body, "observation");
+    }
+
+    this.commit({ persist: true });
+  };
+
+  dismissRunnerSummary = (): void => {
+    this.patchUi({ lastRunnerSummary: null });
+  };
+
   resetSave = (): void => {
     this.stopLoop();
     clearSave();
@@ -1015,6 +1080,7 @@ class SimStoreImpl {
         phase: "GARAGE",
         save: createStarterSave(),
         lastRideSummary: null,
+        lastRunnerSummary: null,
         selectedTool: "visual",
         lastToolReading: null,
         plugViewerColor: null,
@@ -1059,6 +1125,8 @@ class SimStoreImpl {
     callTowTruck: this.callTowTruck,
     abortRideToGarage: this.abortRideToGarage,
     dismissRideSummary: this.dismissRideSummary,
+    completeRunnerRun: this.completeRunnerRun,
+    dismissRunnerSummary: this.dismissRunnerSummary,
     resetSave: this.resetSave,
     getInstalledSlotPartId: this.getInstalledSlotPartId,
   };

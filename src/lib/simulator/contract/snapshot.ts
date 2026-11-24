@@ -14,6 +14,8 @@ import type {
   ComicCaption,
   RideInput,
   RideSummary,
+  RunnerRunResult,
+  RunnerRunSummary,
   SimSaveState,
   ToolReading,
 } from "./types";
@@ -104,6 +106,7 @@ export interface SimAppSnapshot {
   save: SimSaveState;
   ride: RideTelemetrySnapshot | null;
   lastRideSummary: RideSummary | null;
+  lastRunnerSummary: RunnerRunSummary | null;
   selectedTool: ToolId;
   lastToolReading: ToolReading | null;
   plugViewerColor: PlugColor | null;
@@ -154,6 +157,8 @@ export interface SimStoreActions {
   callTowTruck: (this: void) => void;
   abortRideToGarage: (this: void) => void;
   dismissRideSummary: (this: void) => void;
+  completeRunnerRun: (this: void, result: RunnerRunResult) => void;
+  dismissRunnerSummary: (this: void) => void;
 
   // Save management
   resetSave: (this: void) => void;

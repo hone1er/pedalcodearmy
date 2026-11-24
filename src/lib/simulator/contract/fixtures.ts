@@ -143,6 +143,7 @@ export const FIXTURE_APP_SNAPSHOT: SimAppSnapshot = {
   save: FIXTURE_SAVE,
   ride: null,
   lastRideSummary: null,
+  lastRunnerSummary: null,
   selectedTool: "visual",
   lastToolReading: null,
   plugViewerColor: null,

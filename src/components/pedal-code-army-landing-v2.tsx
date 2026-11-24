@@ -60,9 +60,9 @@ export default function PedalCodeArmyLanding() {
     {
       href: "/game",
       icon: Gamepad2,
-      title: "City Runner",
+      title: "Ran When Parked",
       description:
-        "Dodge traffic, hit wheelies, and rack up points riding your moped through the streets of the East Bay.",
+        "Diagnose real 2-stroke symptoms in the garage, dial in your tune on East Bay rides, then rip Oakland traffic in Street Runner mode.",
       cta: "Play Now",
     },
     {

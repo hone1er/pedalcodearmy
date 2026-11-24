@@ -231,6 +231,37 @@ export interface RideSummary {
   notes: string[];
 }
 
+export type RunnerEndReason = "crashed" | "seized" | "stalled" | "aborted";
+
+export interface RunnerRunSummary {
+  bikeId: string;
+  bikeMake: SimBikeMake;
+  bikeNickname: string;
+  score: number;
+  distanceM: number;
+  topSpeedMph: number;
+  maxChtC: number;
+  maxCombo: number;
+  wheelieClears: number;
+  closeCalls: number;
+  partsCollected: number;
+  zoneReached: string;
+  endReason: RunnerEndReason;
+  cashEarned: number;
+  repEarned: number;
+  notes: string[];
+}
+
+export interface RunnerRunResult {
+  summary: RunnerRunSummary;
+  wearDelta: OwnedBike["wear"];
+  plugColor: PlugColor | null;
+  pushedHard: boolean;
+  hotSeconds: number;
+  odometerDeltaM: number;
+  seizesSaved: number;
+}
+
 export interface PlayerBadge {
   id: string;
   title: string;

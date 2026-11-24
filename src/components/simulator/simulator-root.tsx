@@ -1,10 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import {
   AlertTriangle,
-  ArrowLeft,
   CheckCircle2,
   Flame,
   MapPin,
@@ -14,6 +12,7 @@ import {
   Trophy,
   Wrench,
   X,
+  Zap,
 } from "lucide-react";
 import type { RideSummary, SimPhase } from "@/lib/simulator/contract";
 import { getRouteById } from "@/lib/simulator/ride/routes";
@@ -21,17 +20,19 @@ import { getActiveBike, useSimStore } from "@/lib/simulator/store/sim-store";
 import { GarageView } from "./garage/garage-view";
 import { RouteMap } from "./map/route-map";
 import { RideView } from "./ride/ride-view";
+import { RunnerView } from "./runner/runner-view";
 import { CraigslistMarket } from "./shop/craigslist-market";
 import { PartsCounter } from "./shop/parts-counter";
 
 const PHASE_TABS: Array<{
-  phase: Extract<SimPhase, "GARAGE" | "MAP" | "SHOP" | "CRAIGSLIST">;
+  phase: Extract<SimPhase, "GARAGE" | "MAP" | "RUNNER" | "SHOP" | "CRAIGSLIST">;
   label: string;
   icon: typeof Wrench;
 }> = [
   { phase: "GARAGE", label: "Garage", icon: Wrench },
-  { phase: "MAP", label: "Map", icon: MapPin },
-  { phase: "SHOP", label: "Shop", icon: ShoppingBag },
+  { phase: "MAP", label: "Tuning Rides", icon: MapPin },
+  { phase: "RUNNER", label: "Street Runner", icon: Zap },
+  { phase: "SHOP", label: "Parts Shop", icon: ShoppingBag },
   { phase: "CRAIGSLIST", label: "Craigslist", icon: Tag },
 ];
 
@@ -370,15 +371,8 @@ export function SimulatorRoot() {
       <header className="border-b-4 border-[#FFD700] bg-zinc-950">
         <div className="container mx-auto max-w-7xl px-4 py-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            {/* Brand + Back to Arcade */}
+            {/* Brand + Active Bike */}
             <div className="flex flex-wrap items-center gap-3">
-              <Link
-                href="/game"
-                className="inline-flex items-center gap-1 border-2 border-zinc-700 bg-black px-2.5 py-1.5 text-xs font-black uppercase text-zinc-200 transition-colors hover:border-[#FFD700] hover:text-[#FFD700] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700]"
-              >
-                <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
-                Arcade
-              </Link>
               <h1
                 className="text-3xl leading-none tracking-wider text-[#FFD700] drop-shadow-[2px_2px_0px_rgba(234,88,12,0.85)] sm:text-4xl"
                 style={{ fontFamily: "var(--font-bangers), Bangers, cursive" }}
@@ -546,6 +540,8 @@ export function SimulatorRoot() {
           <GarageView />
         ) : phase === "MAP" ? (
           <RouteMap />
+        ) : phase === "RUNNER" ? (
+          <RunnerView />
         ) : phase === "SHOP" ? (
           <PartsCounter />
         ) : (
