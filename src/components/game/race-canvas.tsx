@@ -1,8 +1,15 @@
 "use client";
 
 import { useRef, useEffect, useCallback, useState } from "react";
-import type { MopedMake, RunnerGameState, RenderState, GameResult } from "@/lib/game/types";
-import { VIRTUAL_WIDTH } from "@/lib/game/types";
+import type {
+  MopedMake,
+  RunnerGameState,
+  RenderState,
+  GameResult,
+  GamePopup,
+  ComboState,
+} from "@/lib/game/types";
+import { VIRTUAL_WIDTH, EAST_BAY_ZONES } from "@/lib/game/types";
 import { getMopedStats } from "@/lib/game/moped-stats";
 import {
   createGameState,
@@ -13,6 +20,10 @@ import {
 } from "@/lib/game/game-logic";
 import type { GameEffectCallback } from "@/lib/game/game-logic";
 import type { ThreeRenderer } from "@/lib/game/three-renderer";
+import {
+  SoundEngine,
+  loadMutedPreference,
+} from "@/lib/game/sound-engine";
 import { useCart } from "@/components/cart-context";
 import { RaceHUD } from "./race-hud";
 
@@ -30,8 +41,14 @@ interface HudData {
   maxHealth: number;
   speed: number;
   effects: RunnerGameState["effects"];
+  combo: ComboState;
+  popups: GamePopup[];
+  zoneName: string;
+  zoneAccent: string;
+  speedBoostActive: boolean;
   elapsedTime: number;
   phase: RunnerGameState["phase"];
+  countdownTimer: number;
 }
 
 export function RaceCanvas({
@@ -42,33 +59,53 @@ export function RaceCanvas({
 }: RunnerCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<ThreeRenderer | null>(null);
+  const soundRef = useRef<SoundEngine | null>(null);
+  const effectCallbackRef = useRef<GameEffectCallback | null>(null);
   const gameStateRef = useRef<RunnerGameState | null>(null);
   const animFrameRef = useRef<number>(0);
   const gameOverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTimeRef = useRef<number>(0);
   const finishedRef = useRef(false);
   const isPausedRef = useRef(false);
-  const touchStartRef = useRef<{ y: number; time: number } | null>(null);
+  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(
+    null,
+  );
   const stats = getMopedStats(mopedMake);
   const { isOpen: isCartOpen } = useCart();
   const isCartOpenRef = useRef(isCartOpen);
   isCartOpenRef.current = isCartOpen;
 
   const [isPaused, setIsPaused] = useState(false);
+  const [isMuted, setIsMuted] = useState(() => loadMutedPreference());
   const [hudState, setHudState] = useState<HudData>({
     score: 0,
     distance: 0,
     health: stats.maxHealth,
     maxHealth: stats.maxHealth,
-    speed: 0,
+    speed: stats.baseSpeed,
     effects: [],
+    combo: {
+      count: 0,
+      multiplier: 1,
+      timer: 0,
+      maxTimer: stats.comboWindowMs,
+      maxCombo: 0,
+    },
+    popups: [],
+    zoneName: EAST_BAY_ZONES[0]!.name,
+    zoneAccent: EAST_BAY_ZONES[0]!.accentHex,
+    speedBoostActive: false,
     elapsedTime: 0,
     phase: "countdown",
+    countdownTimer: 3,
   });
 
   const setPaused = useCallback((nextPaused: boolean) => {
     isPausedRef.current = nextPaused;
     setIsPaused(nextPaused);
+    if (nextPaused) {
+      soundRef.current?.updateEngine(0, false, false, false);
+    }
   }, []);
 
   const pauseGame = useCallback(() => {
@@ -80,8 +117,20 @@ export function RaceCanvas({
 
   const handleTogglePause = useCallback(() => {
     if (finishedRef.current || gameStateRef.current?.phase === "dead") return;
+    soundRef.current?.unlock();
     setPaused(!isPausedRef.current);
   }, [setPaused]);
+
+  const handleToggleMute = useCallback(() => {
+    setIsMuted((prev) => {
+      const nextMuted = !prev;
+      soundRef.current?.setMuted(nextMuted);
+      if (!nextMuted) {
+        soundRef.current?.unlock();
+      }
+      return nextMuted;
+    });
+  }, []);
 
   // Auto-pause when cart drawer opens, tab becomes hidden, or window loses focus
   useEffect(() => {
@@ -109,17 +158,28 @@ export function RaceCanvas({
   }, [pauseGame]);
 
   // Input handlers
-  const handleLaneChange = useCallback(
-    (direction: -1 | 1) => {
-      if (!gameStateRef.current || finishedRef.current || isPausedRef.current) return;
-      gameStateRef.current = changeLane(gameStateRef.current, direction);
-    },
-    [],
-  );
+  const handleLaneChange = useCallback((direction: -1 | 1) => {
+    soundRef.current?.unlock();
+    if (!gameStateRef.current || finishedRef.current || isPausedRef.current) {
+      return;
+    }
+    gameStateRef.current = changeLane(
+      gameStateRef.current,
+      direction,
+      effectCallbackRef.current ?? undefined,
+    );
+  }, []);
 
   const handleWheelie = useCallback(() => {
-    if (!gameStateRef.current || finishedRef.current || isPausedRef.current) return;
-    gameStateRef.current = startWheelie(gameStateRef.current, stats);
+    soundRef.current?.unlock();
+    if (!gameStateRef.current || finishedRef.current || isPausedRef.current) {
+      return;
+    }
+    gameStateRef.current = startWheelie(
+      gameStateRef.current,
+      stats,
+      effectCallbackRef.current ?? undefined,
+    );
   }, [stats]);
 
   // Keyboard listeners
@@ -136,7 +196,10 @@ export function RaceCanvas({
         return;
       }
 
-      if (target?.closest?.("button, a") && (e.key === " " || e.key === "Enter")) {
+      if (
+        target?.closest?.("button, a") &&
+        (e.key === " " || e.key === "Enter")
+      ) {
         return;
       }
 
@@ -153,37 +216,54 @@ export function RaceCanvas({
         return;
       }
 
+      if (e.code === "KeyM" || e.key === "m" || e.key === "M") {
+        if (e.repeat) return;
+        e.preventDefault();
+        handleToggleMute();
+        return;
+      }
+
       if (e.code === "ArrowUp" || e.key === "ArrowUp" || e.code === "KeyW") {
         e.preventDefault();
-        handleLaneChange(-1);
-      } else if (e.code === "ArrowDown" || e.key === "ArrowDown" || e.code === "KeyS") {
+        if (!e.repeat) handleLaneChange(-1);
+      } else if (
+        e.code === "ArrowDown" ||
+        e.key === "ArrowDown" ||
+        e.code === "KeyS"
+      ) {
         e.preventDefault();
-        handleLaneChange(1);
+        if (!e.repeat) handleLaneChange(1);
       } else if (
         e.code === "Space" ||
         e.key === " " ||
         e.code === "ArrowRight" ||
-        e.key === "ArrowRight"
+        e.key === "ArrowRight" ||
+        e.code === "KeyD"
       ) {
         e.preventDefault();
-        handleWheelie();
+        if (!e.repeat) handleWheelie();
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleLaneChange, handleWheelie, handleTogglePause]);
+  }, [handleLaneChange, handleWheelie, handleTogglePause, handleToggleMute]);
 
-  // Game loop with Three.js renderer (dynamic import for SSR safety)
+  // Game loop with Three.js renderer & Web Audio sound engine
   useEffect(() => {
     let cancelled = false;
+
+    const sound = new SoundEngine(loadMutedPreference());
+    sound.unlock();
+    soundRef.current = sound;
 
     const startGame = async () => {
       const container = containerRef.current;
       if (!container) return;
 
-      // Dynamic import to avoid SSR issues
-      const { ThreeRenderer: ThreeRendererClass } = await import("@/lib/game/three-renderer");
+      const { ThreeRenderer: ThreeRendererClass } = await import(
+        "@/lib/game/three-renderer"
+      );
 
       if (cancelled) return;
 
@@ -205,13 +285,15 @@ export function RaceCanvas({
       lastTimeRef.current = performance.now();
       let hudUpdateCounter = 0;
 
-      // Effect callback wired to renderer
       const effectCallback: GameEffectCallback = {
-        onCollectSparkles: (x, y) => renderer.spawnCollectSparkles(x, y),
-        onHitSparks: (x, y) => renderer.spawnHitSparks(x, y),
+        onCollectSparkles: (worldX, lane, color) =>
+          renderer.spawnCollectSparkles(worldX, lane, color),
+        onHitSparks: (worldX, lane) => renderer.spawnHitSparks(worldX, lane),
+        onWheeliePop: (lane) => renderer.spawnWheeliePop(lane),
+        onSound: (event) => sound.play(event),
       };
+      effectCallbackRef.current = effectCallback;
 
-      // Handle resize
       const handleResize = () => {
         const rect = container.getBoundingClientRect();
         renderer.resize(rect.width, rect.height);
@@ -232,7 +314,6 @@ export function RaceCanvas({
         const displayW = rect.width;
         const displayH = rect.height;
 
-        // Step game in fixed virtual width
         if (!finishedRef.current && !paused) {
           gameStateRef.current = stepGame(
             gameStateRef.current,
@@ -242,20 +323,30 @@ export function RaceCanvas({
             effectCallback,
           );
 
-          // Check death
           if (gameStateRef.current.phase === "dead" && !finishedRef.current) {
             finishedRef.current = true;
+            sound.updateEngine(0, false, false, false);
             const result = buildGameResult(gameStateRef.current, mopedMake);
             gameOverTimeoutRef.current = setTimeout(() => {
               if (!cancelled) {
                 onGameOver(result);
               }
-            }, 800);
+            }, 850);
           }
         }
 
-        // Build render state
         const state = gameStateRef.current;
+        const speedBoostActive = state.speedBoostTimer > 0;
+        const magnetActive = state.magnetTimer > 0;
+
+        // Modulate two-stroke engine sound
+        sound.updateEngine(
+          state.speed,
+          !paused && state.phase === "running",
+          state.player.isWheeling,
+          speedBoostActive,
+        );
+
         const renderState: RenderState = {
           moped: mopedMake,
           player: state.player,
@@ -266,6 +357,10 @@ export function RaceCanvas({
           health: state.player.health,
           maxHealth: state.player.maxHealth,
           effects: state.effects,
+          combo: state.combo,
+          zoneIndex: state.zoneIndex,
+          speedBoostActive,
+          magnetActive,
           elapsedTime: state.elapsedTime,
           canvasWidth: displayW,
           canvasHeight: displayH,
@@ -277,19 +372,26 @@ export function RaceCanvas({
 
         renderer.render(renderState, deltaTime);
 
-        // Update HUD at ~15fps when active
+        // Update HUD at ~20fps for crisp countdown, combo bar, speedometer & popups
         if (!paused) {
           hudUpdateCounter++;
-          if (hudUpdateCounter % 4 === 0) {
+          if (hudUpdateCounter % 3 === 0) {
+            const zone = EAST_BAY_ZONES[state.zoneIndex] ?? EAST_BAY_ZONES[0]!;
             setHudState({
               score: state.score,
               distance: state.distance,
               health: state.player.health,
               maxHealth: state.player.maxHealth,
-              speed: state.speed,
+              speed: speedBoostActive ? state.speed * 1.32 : state.speed,
               effects: [...state.effects],
+              combo: { ...state.combo },
+              popups: state.popups.map((p) => ({ ...p })),
+              zoneName: zone.name,
+              zoneAccent: zone.accentHex,
+              speedBoostActive,
               elapsedTime: state.elapsedTime,
               phase: state.phase,
+              countdownTimer: state.countdownTimer,
             });
           }
         }
@@ -299,7 +401,6 @@ export function RaceCanvas({
 
       animFrameRef.current = requestAnimationFrame(gameLoop);
 
-      // Cleanup function stored in effect's closure
       return () => {
         window.removeEventListener("resize", handleResize);
       };
@@ -318,19 +419,29 @@ export function RaceCanvas({
         gameOverTimeoutRef.current = null;
       }
       cleanupResize?.();
+      effectCallbackRef.current = null;
       if (rendererRef.current) {
         rendererRef.current.destroy();
         rendererRef.current = null;
       }
+      sound.destroy();
+      if (soundRef.current === sound) {
+        soundRef.current = null;
+      }
     };
   }, [mopedMake, stats, onGameOver]);
 
-  // Touch handlers
+  // Swipe + tap touch handlers
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    soundRef.current?.unlock();
     if (isPausedRef.current) return;
     const touch = e.touches[0];
     if (touch) {
-      touchStartRef.current = { y: touch.clientY, time: Date.now() };
+      touchStartRef.current = {
+        x: touch.clientX,
+        y: touch.clientY,
+        time: Date.now(),
+      };
     }
   }, []);
 
@@ -347,15 +458,10 @@ export function RaceCanvas({
       const elapsed = Date.now() - touchStartRef.current.time;
       touchStartRef.current = null;
 
-      // Quick swipe threshold
-      if (Math.abs(deltaY) > 30 && elapsed < 500) {
-        if (deltaY < 0) {
-          handleLaneChange(-1); // swipe up
-        } else {
-          handleLaneChange(1); // swipe down
-        }
-      } else if (Math.abs(deltaY) <= 30) {
-        handleWheelie(); // tap
+      if (Math.abs(deltaY) > 26 && elapsed < 500) {
+        handleLaneChange(deltaY < 0 ? -1 : 1);
+      } else if (Math.abs(deltaY) <= 26) {
+        handleWheelie();
       }
     },
     [handleLaneChange, handleWheelie],
@@ -363,14 +469,11 @@ export function RaceCanvas({
 
   return (
     <div
-      className="relative h-full w-full touch-none select-none"
+      className="relative h-full w-full touch-none select-none overflow-hidden rounded-none border-4 border-[#FFD700] bg-black shadow-[0_0_32px_rgba(255,215,0,0.18)]"
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
-      <div
-        ref={containerRef}
-        className="h-full w-full"
-      />
+      <div ref={containerRef} className="h-full w-full" />
       <RaceHUD
         score={hudState.score}
         distance={hudState.distance}
@@ -378,13 +481,24 @@ export function RaceCanvas({
         maxHealth={hudState.maxHealth}
         speed={hudState.speed}
         effects={hudState.effects}
+        combo={hudState.combo}
+        popups={hudState.popups}
+        zoneName={hudState.zoneName}
+        zoneAccent={hudState.zoneAccent}
+        speedBoostActive={hudState.speedBoostActive}
         elapsedTime={hudState.elapsedTime}
         phase={hudState.phase}
+        countdownTimer={hudState.countdownTimer}
         isPaused={isPaused}
+        isMuted={isMuted}
         onTogglePause={handleTogglePause}
+        onToggleMute={handleToggleMute}
         onResume={() => setPaused(false)}
         onRestart={onRestart}
         onChangeMoped={onChangeMoped}
+        onLaneUp={() => handleLaneChange(-1)}
+        onLaneDown={() => handleLaneChange(1)}
+        onWheelie={handleWheelie}
       />
     </div>
   );
