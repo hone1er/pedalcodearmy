@@ -1,6 +1,15 @@
 // Shopify configuration
 const SHOPIFY_DOMAIN = (process.env.NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN ?? process.env.NEXT_PUBLIC_SHOPIFY_DOMAIN ?? "pca-moped-parts.myshopify.com").trim();
-const STOREFRONT_ACCESS_TOKEN = (process.env.NEXT_PUBLIC_SHOPIFY_STOREFRONT_TOKEN ?? "").trim();
+const RAW_STOREFRONT_TOKEN = (process.env.NEXT_PUBLIC_SHOPIFY_STOREFRONT_TOKEN ?? "").trim();
+// Never forward Shopify OAuth client secrets or Admin API tokens as Storefront access tokens.
+const NON_STOREFRONT_TOKEN_PREFIXES = ["shpss_", "shpat_", "shpca_"];
+const STOREFRONT_ACCESS_TOKEN = NON_STOREFRONT_TOKEN_PREFIXES.some((prefix) =>
+  RAW_STOREFRONT_TOKEN.toLowerCase().startsWith(prefix),
+)
+  ? ""
+  : RAW_STOREFRONT_TOKEN;
+
+let tokenRejected = false;
 
 // Map product IDs to Shopify variant IDs (GraphQL global IDs)
 export const SHOPIFY_VARIANT_IDS: Record<string, string> = {
@@ -40,18 +49,23 @@ interface StorefrontFetchOptions {
   revalidate?: number;
 }
 
-// Storefront API client
-async function storefrontFetch<T>(
+function buildStorefrontRequest(
   query: string,
-  variables?: Record<string, unknown>,
-  options?: StorefrontFetchOptions,
-): Promise<T> {
+  variables: Record<string, unknown> | undefined,
+  options: StorefrontFetchOptions | undefined,
+  token: string,
+): RequestInit & { next?: { revalidate: number } } {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+
+  if (token) {
+    headers["X-Shopify-Storefront-Access-Token"] = token;
+  }
+
   const fetchInit: RequestInit & { next?: { revalidate: number } } = {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Shopify-Storefront-Access-Token": STOREFRONT_ACCESS_TOKEN,
-    },
+    headers,
     body: JSON.stringify({ query, variables }),
   };
 
@@ -59,10 +73,31 @@ async function storefrontFetch<T>(
     fetchInit.next = { revalidate: options.revalidate };
   }
 
-  const response = await fetch(
-    `https://${SHOPIFY_DOMAIN}/api/2025-01/graphql.json`,
-    fetchInit,
+  return fetchInit;
+}
+
+// Storefront API client
+async function storefrontFetch<T>(
+  query: string,
+  variables?: Record<string, unknown>,
+  options?: StorefrontFetchOptions,
+): Promise<T> {
+  const endpoint = `https://${SHOPIFY_DOMAIN}/api/2025-01/graphql.json`;
+  const token = tokenRejected ? "" : STOREFRONT_ACCESS_TOKEN;
+
+  let response = await fetch(
+    endpoint,
+    buildStorefrontRequest(query, variables, options, token),
   );
+
+  // Fall back to Shopify's Tokenless Storefront API if a configured token is rejected.
+  if (token && (response.status === 401 || response.status === 403)) {
+    tokenRejected = true;
+    response = await fetch(
+      endpoint,
+      buildStorefrontRequest(query, variables, options, ""),
+    );
+  }
 
   if (!response.ok) {
     throw new Error(`Shopify Storefront API HTTP ${response.status}`);
@@ -340,9 +375,9 @@ export interface ShopifyCart {
   };
 }
 
-// Check if Storefront API is configured
+// Check if Storefront API is configured (supports Tokenless Storefront API via domain alone)
 export function isStorefrontConfigured(): boolean {
-  return Boolean(STOREFRONT_ACCESS_TOKEN);
+  return Boolean(SHOPIFY_DOMAIN);
 }
 
 // Create a new Shopify cart
