@@ -300,7 +300,7 @@ export function Model3dViewer({
           href={usdzSrc}
           onClick={(e) => e.stopPropagation()}
           onPointerDown={(e) => e.stopPropagation()}
-          className="absolute bottom-2 right-2 z-20 flex items-center gap-1 rounded-none border-2 border-black bg-[#FFD700] px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-colors hover:bg-yellow-400"
+          className="absolute right-2 top-2 z-20 flex items-center gap-1 rounded-none border-2 border-black bg-[#FFD700] px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-colors hover:bg-yellow-400"
           aria-label={`View ${alt} in AR`}
         >
           <Box className="h-3 w-3" />

@@ -615,16 +615,23 @@ function matchHardcodedPartId(product: StorefrontProduct): string | null {
 
   const handle = product.handle.toLowerCase();
   const title = product.title.toLowerCase();
+  const combined = `${handle} ${title}`;
 
-  if (handle.includes("side-cover") || title.includes("side cover")) {
+  if (
+    handle === "side-covers" ||
+    handle === "puch-magnum-side-covers" ||
+    (combined.includes("magnum") &&
+      combined.includes("side") &&
+      combined.includes("cover"))
+  ) {
     return "side-covers";
   }
 
   if (
     handle.includes("ram-airbox") ||
-    handle.includes("airbox") ||
-    title.includes("racing airbox") ||
-    title.includes("ram airbox")
+    title.includes("ram-airbox") ||
+    handle.includes("racing-airbox") ||
+    title.includes("racing airbox")
   ) {
     return "ram-airbox";
   }
@@ -706,6 +713,37 @@ function mergeCatalog(shopifyProducts: StorefrontProduct[]): ShopPart[] {
       }
     }
 
+    if (part.shopifyEnabled) {
+      const hardcodedVariantId = SHOPIFY_VARIANT_IDS[part.id];
+      const hardcodedNumericId = hardcodedVariantId
+        ? extractNumericVariantId(hardcodedVariantId)
+        : null;
+      const primaryVariant =
+        (hardcodedNumericId
+          ? matched.variants.find(
+              (v) => extractNumericVariantId(v.id) === hardcodedNumericId,
+            )
+          : undefined) ??
+        matched.variants.find((v) => v.availableForSale) ??
+        matched.variants[0];
+
+      if (primaryVariant) {
+        const isAvailable =
+          matched.availableForSale && primaryVariant.availableForSale;
+        return {
+          ...part,
+          media: mergedMedia,
+          price: formatShopifyPrice(
+            primaryVariant.price.amount,
+            primaryVariant.price.currencyCode,
+          ),
+          availability: isAvailable ? "In Stock" : "Sold Out",
+          shopifyVariantId: primaryVariant.id,
+          availableForSale: isAvailable,
+        };
+      }
+    }
+
     return {
       ...part,
       media: mergedMedia,
@@ -737,10 +775,10 @@ function mergeCatalog(shopifyProducts: StorefrontProduct[]): ShopPart[] {
       media: media.length > 0 ? media : undefined,
       includes,
       includesTitle: "Specs / Details:",
-      availability: product.availableForSale ? "In Stock" : "Sold Out",
+      availability: isAvailable ? "In Stock" : "Sold Out",
       shopifyEnabled: Boolean(primaryVariant),
       shopifyVariantId: primaryVariant?.id,
-      availableForSale: primaryVariant ? isAvailable : false,
+      availableForSale: isAvailable,
     };
   });
 
