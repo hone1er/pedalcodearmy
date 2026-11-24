@@ -16,6 +16,7 @@ import {
   updateCartLines,
   removeFromCart,
   createCheckoutUrl,
+  extractNumericVariantId,
   type ShopifyCart,
   SHOPIFY_VARIANT_IDS,
 } from "@/lib/shopify";
@@ -76,7 +77,7 @@ function deleteCookie(name: string) {
 function shopifyCartToItems(cart: ShopifyCart): CartItem[] {
   return cart.lines.edges.map((edge) => {
     const line = edge.node;
-    const variantId = line.merchandise.id.replace("gid://shopify/ProductVariant/", "");
+    const variantId = extractNumericVariantId(line.merchandise.id);
     return {
       variantId,
       lineId: line.id,
@@ -178,7 +179,23 @@ export function CartProvider({ children }: { children: ReactNode }) {
           }
         }
 
-        setItems(cartData);
+        const normalizedMap = new Map<string, CartItem>();
+        for (const item of cartData) {
+          const normalizedId = extractNumericVariantId(item.variantId);
+          const existing = normalizedMap.get(normalizedId);
+          if (existing) {
+            normalizedMap.set(normalizedId, {
+              ...existing,
+              quantity: existing.quantity + item.quantity,
+            });
+          } else {
+            normalizedMap.set(normalizedId, {
+              ...item,
+              variantId: normalizedId,
+            });
+          }
+        }
+        setItems(Array.from(normalizedMap.values()));
       }
 
       setIsHydrated(true);
@@ -217,16 +234,22 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const addItemLocal = useCallback(
     (item: Omit<CartItem, "quantity" | "lineId">) => {
+      const normalizedVariantId = extractNumericVariantId(item.variantId);
       setItems((prev) => {
-        const existing = prev.find((i) => i.variantId === item.variantId);
+        const existing = prev.find(
+          (i) => extractNumericVariantId(i.variantId) === normalizedVariantId
+        );
         if (existing) {
           return prev.map((i) =>
-            i.variantId === item.variantId
-              ? { ...i, quantity: i.quantity + 1 }
+            extractNumericVariantId(i.variantId) === normalizedVariantId
+              ? { ...i, variantId: normalizedVariantId, quantity: i.quantity + 1 }
               : i
           );
         }
-        return [...prev, { ...item, quantity: 1 }];
+        return [
+          ...prev,
+          { ...item, variantId: normalizedVariantId, quantity: 1 },
+        ];
       });
     },
     []
@@ -279,23 +302,34 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const removeItem = useCallback(
     async (variantId: string) => {
+      const normalizedVariantId = extractNumericVariantId(variantId);
       setIsLoading(true);
 
       try {
         if (useShopify && shopifyCartId) {
-          const item = items.find((i) => i.variantId === variantId);
+          const item = items.find(
+            (i) => extractNumericVariantId(i.variantId) === normalizedVariantId
+          );
           if (item?.lineId) {
             const cart = await removeFromCart(shopifyCartId, [item.lineId]);
             setItems(shopifyCartToItems(cart));
             setCheckoutUrl(cart.checkoutUrl);
           }
         } else {
-          setItems((prev) => prev.filter((i) => i.variantId !== variantId));
+          setItems((prev) =>
+            prev.filter(
+              (i) => extractNumericVariantId(i.variantId) !== normalizedVariantId
+            )
+          );
         }
       } catch (error) {
         console.error("Failed to remove item from cart:", error);
         setUseShopify(false);
-        setItems((prev) => prev.filter((i) => i.variantId !== variantId));
+        setItems((prev) =>
+          prev.filter(
+            (i) => extractNumericVariantId(i.variantId) !== normalizedVariantId
+          )
+        );
       } finally {
         setIsLoading(false);
       }
@@ -305,8 +339,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const updateQuantity = useCallback(
     async (variantId: string, quantity: number) => {
+      const normalizedVariantId = extractNumericVariantId(variantId);
       if (quantity <= 0) {
-        await removeItem(variantId);
+        await removeItem(normalizedVariantId);
         return;
       }
 
@@ -314,7 +349,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
       try {
         if (useShopify && shopifyCartId) {
-          const item = items.find((i) => i.variantId === variantId);
+          const item = items.find(
+            (i) => extractNumericVariantId(i.variantId) === normalizedVariantId
+          );
           if (item?.lineId) {
             const cart = await updateCartLines(shopifyCartId, [
               { id: item.lineId, quantity },
@@ -325,7 +362,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
         } else {
           setItems((prev) =>
             prev.map((i) =>
-              i.variantId === variantId ? { ...i, quantity } : i
+              extractNumericVariantId(i.variantId) === normalizedVariantId
+                ? { ...i, variantId: normalizedVariantId, quantity }
+                : i
             )
           );
         }
@@ -334,7 +373,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
         setUseShopify(false);
         setItems((prev) =>
           prev.map((i) =>
-            i.variantId === variantId ? { ...i, quantity } : i
+            extractNumericVariantId(i.variantId) === normalizedVariantId
+              ? { ...i, variantId: normalizedVariantId, quantity }
+              : i
           )
         );
       } finally {

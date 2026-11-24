@@ -10,27 +10,49 @@ interface ShopifyBuyButtonProps {
   productName: string;
   price: string;
   image?: string;
+  variantId?: string;
+  availableForSale?: boolean;
 }
 
-export function ShopifyBuyButton({ productId, productName, price, image }: ShopifyBuyButtonProps) {
+export function ShopifyBuyButton({
+  productId,
+  productName,
+  price,
+  image,
+  variantId,
+  availableForSale,
+}: ShopifyBuyButtonProps) {
   const [justAdded, setJustAdded] = useState(false);
   const { addItem } = useCart();
-  const variantId = getShopifyVariantId(productId);
+  const resolvedVariantId = variantId ?? getShopifyVariantId(productId);
 
-  if (!variantId) {
+  if (!resolvedVariantId) {
     return (
       <button
+        type="button"
         disabled
-        className="flex w-full items-center justify-center gap-2 rounded-none border-2 border-black bg-gray-300 py-3 text-sm font-black uppercase text-gray-600 cursor-not-allowed"
+        className="flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-none border-2 border-black bg-gray-300 py-3 text-sm font-black uppercase text-gray-600"
       >
         Coming Soon
       </button>
     );
   }
 
+  if (availableForSale === false) {
+    return (
+      <button
+        type="button"
+        disabled
+        className="flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-none border-2 border-black bg-gray-300 py-3 text-sm font-black uppercase text-gray-600"
+      >
+        Sold Out
+      </button>
+    );
+  }
+
   const handleAddToCart = () => {
     void addItem({
-      variantId,
+      variantId: resolvedVariantId,
       productId,
       name: productName,
       price,
@@ -42,6 +64,7 @@ export function ShopifyBuyButton({ productId, productName, price, image }: Shopi
 
   return (
     <button
+      type="button"
       onClick={handleAddToCart}
       disabled={justAdded}
       className={`flex w-full items-center justify-center gap-2 rounded-none border-2 border-black py-3 text-sm font-black uppercase transition-all ${

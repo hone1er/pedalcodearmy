@@ -36,16 +36,37 @@ interface StorefrontResponse<T> {
   errors?: Array<{ message: string }>;
 }
 
+interface StorefrontFetchOptions {
+  revalidate?: number;
+}
+
 // Storefront API client
-async function storefrontFetch<T>(query: string, variables?: Record<string, unknown>): Promise<T> {
-  const response = await fetch(`https://${SHOPIFY_DOMAIN}/api/2025-01/graphql.json`, {
+async function storefrontFetch<T>(
+  query: string,
+  variables?: Record<string, unknown>,
+  options?: StorefrontFetchOptions,
+): Promise<T> {
+  const fetchInit: RequestInit & { next?: { revalidate: number } } = {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "X-Shopify-Storefront-Access-Token": STOREFRONT_ACCESS_TOKEN,
     },
     body: JSON.stringify({ query, variables }),
-  });
+  };
+
+  if (typeof window === "undefined" && options?.revalidate !== undefined) {
+    fetchInit.next = { revalidate: options.revalidate };
+  }
+
+  const response = await fetch(
+    `https://${SHOPIFY_DOMAIN}/api/2025-01/graphql.json`,
+    fetchInit,
+  );
+
+  if (!response.ok) {
+    throw new Error(`Shopify Storefront API HTTP ${response.status}`);
+  }
 
   const json = (await response.json()) as StorefrontResponse<T>;
 
@@ -59,6 +80,222 @@ async function storefrontFetch<T>(query: string, variables?: Record<string, unkn
   }
 
   return json.data;
+}
+
+// Types for Shopify Storefront Products & Media
+export interface StorefrontMoney {
+  amount: string;
+  currencyCode: string;
+}
+
+export interface StorefrontVariant {
+  id: string;
+  title: string;
+  availableForSale: boolean;
+  sku?: string | null;
+  price: StorefrontMoney;
+  compareAtPrice?: StorefrontMoney | null;
+}
+
+export interface StorefrontMediaImage {
+  mediaContentType: "IMAGE";
+  alt?: string | null;
+  image: {
+    url: string;
+    altText?: string | null;
+    width?: number | null;
+    height?: number | null;
+  } | null;
+}
+
+export interface StorefrontModel3dSource {
+  url: string;
+  mimeType: string;
+  format: string;
+  filesize: number;
+}
+
+export interface StorefrontMediaModel3d {
+  mediaContentType: "MODEL_3D";
+  alt?: string | null;
+  previewImage?: {
+    url: string;
+  } | null;
+  sources: StorefrontModel3dSource[];
+}
+
+export interface StorefrontVideoSource {
+  url: string;
+  mimeType: string;
+}
+
+export interface StorefrontMediaVideo {
+  mediaContentType: "VIDEO";
+  alt?: string | null;
+  previewImage?: {
+    url: string;
+  } | null;
+  sources: StorefrontVideoSource[];
+}
+
+export interface StorefrontMediaExternalVideo {
+  mediaContentType: "EXTERNAL_VIDEO";
+  alt?: string | null;
+}
+
+export type StorefrontMediaItem =
+  | StorefrontMediaImage
+  | StorefrontMediaModel3d
+  | StorefrontMediaVideo
+  | StorefrontMediaExternalVideo;
+
+export interface StorefrontProduct {
+  id: string;
+  handle: string;
+  title: string;
+  description: string;
+  descriptionHtml: string;
+  availableForSale: boolean;
+  tags: string[];
+  productType: string;
+  variants: StorefrontVariant[];
+  media: StorefrontMediaItem[];
+}
+
+interface StorefrontProductsQueryResponse {
+  products: {
+    edges: Array<{
+      node: {
+        id: string;
+        handle: string;
+        title: string;
+        description: string;
+        descriptionHtml: string;
+        availableForSale: boolean;
+        tags: string[];
+        productType: string;
+        variants: {
+          edges: Array<{
+            node: StorefrontVariant;
+          }>;
+        };
+        media: {
+          edges: Array<{
+            node: StorefrontMediaItem;
+          }>;
+        };
+      };
+    }>;
+  };
+}
+
+export function extractNumericVariantId(variantId: string): string {
+  return variantId.replace(/^gid:\/\/shopify\/ProductVariant\//, "");
+}
+
+// Fetch live products from Shopify Storefront API
+export async function fetchStorefrontProducts(): Promise<StorefrontProduct[]> {
+  if (!isStorefrontConfigured()) {
+    return [];
+  }
+
+  const query = `
+    query fetchStorefrontProducts {
+      products(first: 50, sortKey: CREATED_AT, reverse: true) {
+        edges {
+          node {
+            id
+            handle
+            title
+            description
+            descriptionHtml
+            availableForSale
+            tags
+            productType
+            variants(first: 10) {
+              edges {
+                node {
+                  id
+                  title
+                  availableForSale
+                  sku
+                  price {
+                    amount
+                    currencyCode
+                  }
+                  compareAtPrice {
+                    amount
+                    currencyCode
+                  }
+                }
+              }
+            }
+            media(first: 20) {
+              edges {
+                node {
+                  mediaContentType
+                  alt
+                  ... on MediaImage {
+                    image {
+                      url
+                      altText
+                      width
+                      height
+                    }
+                  }
+                  ... on Model3d {
+                    alt
+                    previewImage {
+                      url
+                    }
+                    sources {
+                      url
+                      mimeType
+                      format
+                      filesize
+                    }
+                  }
+                  ... on Video {
+                    previewImage {
+                      url
+                    }
+                    sources {
+                      url
+                      mimeType
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  `;
+
+  try {
+    const data = await storefrontFetch<StorefrontProductsQueryResponse>(
+      query,
+      undefined,
+      { revalidate: 60 },
+    );
+
+    return data.products.edges.map(({ node }) => ({
+      id: node.id,
+      handle: node.handle,
+      title: node.title,
+      description: node.description,
+      descriptionHtml: node.descriptionHtml,
+      availableForSale: node.availableForSale,
+      tags: node.tags,
+      productType: node.productType,
+      variants: node.variants.edges.map((edge) => edge.node),
+      media: node.media.edges.map((edge) => edge.node),
+    }));
+  } catch (error) {
+    console.error("Failed to fetch Shopify Storefront products:", error);
+    return [];
+  }
 }
 
 // Types for Shopify Cart
