@@ -7,7 +7,7 @@ const LAST_UPDATED = "November 24, 2026";
 export const metadata: Metadata = {
   title: "Privacy Policy",
   description:
-    "How Pedal Code Army handles cookies, cart storage, waitlist and custom orders, and City Runner leaderboard names. No ad tracking, no data selling.",
+    "How Pedal Code Army handles cookies, cart storage, waitlist and custom orders, and Ran When Parked Street Runner leaderboard names. No ad tracking, no data selling.",
   alternates: { canonical: "/privacy" },
   openGraph: {
     title: "Privacy Policy | Pedal Code Army",
@@ -112,7 +112,7 @@ export default function PrivacyPage() {
               If you join a waitlist or request a custom order, we keep your name, email and order
               details so we can follow up.
             </li>
-            <li>City Runner leaderboard entries show the display name you choose — nothing else about you.</li>
+            <li>Ran When Parked Street Runner leaderboard entries show the display name you choose — nothing else about you.</li>
             <li>
               Questions or deletion requests:{" "}
               <a href={`mailto:${CONTACT_EMAIL}`} className="underline decoration-2 underline-offset-2">
@@ -200,11 +200,11 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
-        <Section id="leaderboard" title="City Runner Leaderboard">
+        <Section id="leaderboard" title="Street Runner Leaderboard">
           <p>
-            If you submit a City Runner score, we store the display name you type, your moped
-            choice, score, distance and parts collected. This is shown publicly on the leaderboard,
-            so please don&apos;t use your real full name or anything personal.
+            If you submit a Ran When Parked Street Runner score, we store the display name you
+            type, your moped choice, score, distance and parts collected. This is shown publicly
+            on the leaderboard, so please don&apos;t use your real full name or anything personal.
           </p>
           <p>Want an entry removed? Email us with the name and score and we&apos;ll scrub it.</p>
         </Section>
