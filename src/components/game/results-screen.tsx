@@ -1,11 +1,15 @@
 "use client";
 
 import { useState } from "react";
+import { Trophy } from "lucide-react";
 import type { GameResult, CollectibleType } from "@/lib/game/types";
 import { PIXELS_PER_METER } from "@/lib/game/types";
+import { MOPED_INFO } from "@/lib/game/moped-stats";
 
 interface ResultsScreenProps {
   result: GameResult;
+  isNewBest?: boolean;
+  personalBest?: number;
   onPlayAgain: () => void;
   onChangeMoped: () => void;
   onViewLeaderboard: () => void;
@@ -15,13 +19,13 @@ const PART_LABELS: Record<CollectibleType, string> = {
   "spark-plug": "Spark Plugs",
   jet: "Jets",
   pipe: "Pipes",
-  cylinder: "Cylinders",
+  cylinder: "70cc Kits",
 };
 
 const SHOP_COLORS: Record<string, { bg: string; text: string }> = {
-  treatland: { bg: "bg-green-500/20", text: "text-green-400" },
-  "1977-mopeds": { bg: "bg-blue-500/20", text: "text-blue-400" },
-  "myrons-mopeds": { bg: "bg-orange-500/20", text: "text-orange-400" },
+  treatland: { bg: "bg-green-500/20 border-green-400/50", text: "text-green-300" },
+  "1977-mopeds": { bg: "bg-blue-500/20 border-blue-400/50", text: "text-blue-300" },
+  "myrons-mopeds": { bg: "bg-orange-500/20 border-orange-400/50", text: "text-orange-300" },
 };
 
 const SHOP_NAMES: Record<string, string> = {
@@ -32,6 +36,8 @@ const SHOP_NAMES: Record<string, string> = {
 
 export function ResultsScreen({
   result,
+  isNewBest = false,
+  personalBest = 0,
   onPlayAgain,
   onChangeMoped,
   onViewLeaderboard,
@@ -42,7 +48,8 @@ export function ResultsScreen({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [rank, setRank] = useState<number | null>(null);
 
-  const isGoodRun = result.score > 500;
+  const isGoodRun = result.score >= 800;
+  const mopedName = MOPED_INFO[result.mopedMake].name;
 
   const handleSubmit = async () => {
     if (!playerName.trim() || submitting) return;
@@ -88,61 +95,107 @@ export function ResultsScreen({
   };
 
   return (
-    <div className="flex flex-col items-center gap-4 px-4 md:gap-6">
-      <h2
-        className="text-3xl text-[#FFD700] md:text-4xl"
-        style={{ fontFamily: "var(--font-bangers), Bangers, cursive" }}
-      >
-        {isGoodRun ? "NICE RUN!" : "GAME OVER"}
-      </h2>
+    <div className="flex w-full max-w-xl flex-col items-center gap-4 px-4 md:gap-5">
+      <div className="text-center">
+        {isNewBest && (
+          <div className="mb-2 inline-flex items-center gap-1.5 border-2 border-[#FFD700] bg-[#FFD700] px-3 py-0.5 text-xs font-black uppercase tracking-widest text-black">
+            <Trophy className="h-3.5 w-3.5" aria-hidden="true" />
+            New Personal Best!
+          </div>
+        )}
+        <h2
+          className="text-4xl tracking-wider text-[#FFD700] md:text-5xl"
+          style={{ fontFamily: "var(--font-bangers), Bangers, cursive" }}
+        >
+          {isGoodRun ? "LEGENDARY RUN!" : "WIPEOUT!"}
+        </h2>
+        <p className="mt-1 text-xs font-bold uppercase tracking-wider text-gray-400">
+          {mopedName} &bull; Reached {result.zoneReached}
+        </p>
+      </div>
 
       {/* Score box */}
-      <div className="rounded-lg border-4 border-[#FFD700] bg-black/90 px-6 py-4 text-center">
-        <div className="text-xs uppercase tracking-wider text-gray-400">
-          Score
+      <div className="w-full max-w-md border-4 border-[#FFD700] bg-zinc-950 px-6 py-4 text-center shadow-[5px_5px_0px_0px_rgba(255,215,0,0.45)]">
+        <div className="text-xs font-bold uppercase tracking-widest text-gray-400">
+          Final Score
         </div>
         <div
-          className="text-4xl text-[#FFD700] md:text-5xl"
+          className="text-4xl tabular-nums text-[#FFD700] md:text-5xl"
           style={{ fontFamily: "var(--font-orbitron), Orbitron, monospace" }}
         >
           {result.score.toLocaleString()}
         </div>
+        {personalBest > 0 && !isNewBest && (
+          <div className="mt-1 text-xs text-gray-400">
+            Personal Best: {personalBest.toLocaleString()}
+          </div>
+        )}
       </div>
 
       {/* Stats grid */}
-      <div className="grid w-full max-w-md grid-cols-2 gap-3">
-        <div className="rounded border-2 border-gray-700 bg-black/80 p-3 text-center">
-          <div className="text-[10px] uppercase text-gray-400">Distance</div>
+      <div className="grid w-full max-w-md grid-cols-3 gap-2.5">
+        <div className="border-2 border-gray-700 bg-zinc-950 p-2.5 text-center">
+          <div className="text-[10px] font-bold uppercase text-gray-400">
+            Distance
+          </div>
           <div
-            className="text-lg text-white"
+            className="text-base tabular-nums text-white md:text-lg"
             style={{ fontFamily: "var(--font-orbitron), Orbitron, monospace" }}
           >
             {result.distance}m
           </div>
         </div>
-        <div className="rounded border-2 border-gray-700 bg-black/80 p-3 text-center">
-          <div className="text-[10px] uppercase text-gray-400">Top Speed</div>
+        <div className="border-2 border-gray-700 bg-zinc-950 p-2.5 text-center">
+          <div className="text-[10px] font-bold uppercase text-gray-400">
+            Top Speed
+          </div>
           <div
-            className="text-lg text-white"
+            className="text-base tabular-nums text-white md:text-lg"
             style={{ fontFamily: "var(--font-orbitron), Orbitron, monospace" }}
           >
             {Math.round((result.topSpeed / PIXELS_PER_METER) * 2.237)}
-            <span className="ml-1 text-xs text-gray-400">MPH</span>
+            <span className="ml-0.5 text-[10px] text-gray-400">MPH</span>
           </div>
         </div>
-        <div className="rounded border-2 border-gray-700 bg-black/80 p-3 text-center">
-          <div className="text-[10px] uppercase text-gray-400">Parts</div>
+        <div className="border-2 border-gray-700 bg-zinc-950 p-2.5 text-center">
+          <div className="text-[10px] font-bold uppercase text-gray-400">
+            Max Combo
+          </div>
           <div
-            className="text-lg text-white"
+            className="text-base tabular-nums text-cyan-300 md:text-lg"
             style={{ fontFamily: "var(--font-orbitron), Orbitron, monospace" }}
           >
-            {result.totalParts}
+            {result.maxCombo}
           </div>
         </div>
-        <div className="rounded border-2 border-gray-700 bg-black/80 p-3 text-center">
-          <div className="text-[10px] uppercase text-gray-400">Shops</div>
+        <div className="border-2 border-gray-700 bg-zinc-950 p-2.5 text-center">
+          <div className="text-[10px] font-bold uppercase text-gray-400">
+            Wheelies
+          </div>
           <div
-            className="text-lg text-white"
+            className="text-base tabular-nums text-[#FFD700] md:text-lg"
+            style={{ fontFamily: "var(--font-orbitron), Orbitron, monospace" }}
+          >
+            {result.wheelieClears}
+          </div>
+        </div>
+        <div className="border-2 border-gray-700 bg-zinc-950 p-2.5 text-center">
+          <div className="text-[10px] font-bold uppercase text-gray-400">
+            Close Calls
+          </div>
+          <div
+            className="text-base tabular-nums text-orange-300 md:text-lg"
+            style={{ fontFamily: "var(--font-orbitron), Orbitron, monospace" }}
+          >
+            {result.closeCalls}
+          </div>
+        </div>
+        <div className="border-2 border-gray-700 bg-zinc-950 p-2.5 text-center">
+          <div className="text-[10px] font-bold uppercase text-gray-400">
+            Shops
+          </div>
+          <div
+            className="text-base tabular-nums text-green-300 md:text-lg"
             style={{ fontFamily: "var(--font-orbitron), Orbitron, monospace" }}
           >
             {result.shopsVisited.length}/3
@@ -152,17 +205,19 @@ export function ResultsScreen({
 
       {/* Parts breakdown */}
       <div className="w-full max-w-md">
-        <div className="mb-2 text-center text-xs uppercase tracking-wider text-gray-400">
-          Parts Collected
+        <div className="mb-1.5 text-center text-[11px] font-bold uppercase tracking-wider text-gray-400">
+          Parts Scavenged ({result.totalParts})
         </div>
-        <div className="flex justify-center gap-3">
+        <div className="grid grid-cols-4 gap-2">
           {(Object.keys(PART_LABELS) as CollectibleType[]).map((type) => (
             <div
               key={type}
-              className="rounded border-2 border-gray-700 bg-black/80 px-3 py-2 text-center"
+              className="border-2 border-gray-800 bg-zinc-950 px-2 py-2 text-center"
             >
-              <div className="text-[10px] text-gray-400">{PART_LABELS[type]}</div>
-              <div className="text-sm font-bold text-[#FFD700]">
+              <div className="text-[10px] text-gray-400">
+                {PART_LABELS[type]}
+              </div>
+              <div className="text-sm font-black text-[#FFD700]">
                 {result.partsCollected[type]}
               </div>
             </div>
@@ -172,16 +227,16 @@ export function ResultsScreen({
 
       {/* Shops visited */}
       {result.shopsVisited.length > 0 && (
-        <div className="flex justify-center gap-2">
+        <div className="flex flex-wrap justify-center gap-2">
           {result.shopsVisited.map((shop) => {
             const colors = SHOP_COLORS[shop] ?? {
-              bg: "bg-gray-500/20",
-              text: "text-gray-400",
+              bg: "bg-gray-500/20 border-gray-500/40",
+              text: "text-gray-300",
             };
             return (
               <span
                 key={shop}
-                className={`rounded-full ${colors.bg} px-3 py-1 text-xs font-bold ${colors.text}`}
+                className={`border px-3 py-0.5 text-xs font-bold uppercase ${colors.bg} ${colors.text}`}
               >
                 {SHOP_NAMES[shop] ?? shop}
               </span>
@@ -198,18 +253,19 @@ export function ResultsScreen({
               type="text"
               value={playerName}
               onChange={(e) => setPlayerName(e.target.value.slice(0, 30))}
-              placeholder="Enter your name..."
+              placeholder="Enter rider name for leaderboard..."
               aria-label="Your name for the leaderboard"
               maxLength={30}
-              className="flex-1 rounded border-2 border-gray-700 bg-black/80 px-3 py-2 text-white placeholder-gray-400 focus:border-[#FFD700] focus:outline-none focus-visible:ring-1 focus-visible:ring-[#FFD700]"
+              className="flex-1 border-2 border-gray-700 bg-zinc-950 px-3 py-2 text-sm text-white placeholder-gray-400 focus:border-[#FFD700] focus:outline-none focus-visible:ring-1 focus-visible:ring-[#FFD700]"
               onKeyDown={(e) => {
                 if (e.key === "Enter") void handleSubmit();
               }}
             />
             <button
+              type="button"
               onClick={() => void handleSubmit()}
               disabled={!playerName.trim() || submitting}
-              className="rounded border-2 border-[#FFD700] bg-[#FFD700] px-4 py-2 font-bold text-black transition-colors hover:bg-yellow-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] focus-visible:ring-offset-2 focus-visible:ring-offset-black disabled:opacity-50"
+              className="border-2 border-[#FFD700] bg-[#FFD700] px-4 py-2 text-sm font-black uppercase text-black transition-colors hover:bg-yellow-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] focus-visible:ring-offset-2 focus-visible:ring-offset-black disabled:opacity-50"
             >
               {submitting ? "..." : "Submit"}
             </button>
@@ -217,14 +273,14 @@ export function ResultsScreen({
           {submitError && (
             <div
               role="alert"
-              className="flex items-center justify-between gap-3 rounded border border-red-500/60 bg-red-950/50 px-3 py-2 text-xs text-red-300"
+              className="flex items-center justify-between gap-3 border border-red-500/60 bg-red-950/50 px-3 py-2 text-xs text-red-300"
             >
               <span>{submitError}</span>
               <button
                 type="button"
                 onClick={() => void handleSubmit()}
                 disabled={submitting || !playerName.trim()}
-                className="shrink-0 rounded border border-red-400 px-2.5 py-1 font-bold text-red-200 transition-colors hover:bg-red-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] focus-visible:ring-offset-2 focus-visible:ring-offset-black disabled:opacity-50"
+                className="shrink-0 border border-red-400 px-2.5 py-1 font-bold text-red-200 transition-colors hover:bg-red-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] focus-visible:ring-offset-2 focus-visible:ring-offset-black disabled:opacity-50"
               >
                 Retry
               </button>
@@ -232,10 +288,12 @@ export function ResultsScreen({
           )}
         </div>
       ) : (
-        <div className="text-center">
-          <p className="text-green-400">Score submitted!</p>
+        <div className="border-2 border-green-500/60 bg-green-950/30 px-5 py-2 text-center">
+          <p className="text-sm font-bold uppercase text-green-300">
+            Score submitted!
+          </p>
           {rank && (
-            <p className="text-lg text-[#FFD700]">Rank #{rank}</p>
+            <p className="text-lg font-black text-[#FFD700]">Rank #{rank}</p>
           )}
         </div>
       )}
@@ -243,23 +301,32 @@ export function ResultsScreen({
       {/* Action buttons */}
       <div className="flex flex-wrap justify-center gap-3">
         <button
+          type="button"
           onClick={onPlayAgain}
-          className="rounded border-2 border-[#FFD700] bg-[#FFD700] px-5 py-2.5 font-bold text-black transition-colors hover:bg-yellow-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
-          style={{ fontFamily: "var(--font-russo-one), 'Russo One', sans-serif" }}
+          className="border-2 border-[#FFD700] bg-[#FFD700] px-6 py-2.5 font-bold uppercase text-black shadow-[3px_3px_0px_0px_rgba(255,255,255,0.8)] transition-colors hover:bg-yellow-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+          style={{
+            fontFamily: "var(--font-russo-one), 'Russo One', sans-serif",
+          }}
         >
-          Play Again
+          Run It Back
         </button>
         <button
+          type="button"
           onClick={onChangeMoped}
-          className="rounded border-2 border-gray-600 bg-black px-5 py-2.5 font-bold text-white transition-colors hover:border-[#FFD700] hover:text-[#FFD700] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
-          style={{ fontFamily: "var(--font-russo-one), 'Russo One', sans-serif" }}
+          className="border-2 border-gray-600 bg-black px-5 py-2.5 font-bold uppercase text-white transition-colors hover:border-[#FFD700] hover:text-[#FFD700] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+          style={{
+            fontFamily: "var(--font-russo-one), 'Russo One', sans-serif",
+          }}
         >
-          Change Moped
+          Garage
         </button>
         <button
+          type="button"
           onClick={onViewLeaderboard}
-          className="rounded border-2 border-gray-600 bg-black px-5 py-2.5 font-bold text-white transition-colors hover:border-[#FFD700] hover:text-[#FFD700] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
-          style={{ fontFamily: "var(--font-russo-one), 'Russo One', sans-serif" }}
+          className="border-2 border-gray-600 bg-black px-5 py-2.5 font-bold uppercase text-white transition-colors hover:border-[#FFD700] hover:text-[#FFD700] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+          style={{
+            fontFamily: "var(--font-russo-one), 'Russo One', sans-serif",
+          }}
         >
           Leaderboard
         </button>

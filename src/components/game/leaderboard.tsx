@@ -66,16 +66,17 @@ export function Leaderboard({ onBack, initialMoped }: LeaderboardProps) {
   }, [fetchScores]);
 
   return (
-    <div className="flex flex-col items-center gap-4 px-4">
+    <div className="flex w-full max-w-2xl flex-col items-center gap-4 px-4">
       <button
+        type="button"
         onClick={onBack}
-        className="self-start rounded px-2 py-1 text-sm text-gray-400 hover:text-[#FFD700] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+        className="self-start border border-gray-700 px-3 py-1 text-xs font-bold uppercase tracking-wider text-gray-300 hover:border-[#FFD700] hover:text-[#FFD700] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
       >
         &larr; Back
       </button>
 
       <h2
-        className="text-3xl text-[#FFD700] md:text-4xl"
+        className="text-4xl tracking-wider text-[#FFD700] md:text-5xl"
         style={{ fontFamily: "var(--font-bangers), Bangers, cursive" }}
       >
         LEADERBOARD
@@ -84,9 +85,10 @@ export function Leaderboard({ onBack, initialMoped }: LeaderboardProps) {
       {/* Filter */}
       <div className="flex justify-center">
         <select
+          aria-label="Filter leaderboard by moped"
           value={filterMoped}
           onChange={(e) => setFilterMoped(e.target.value)}
-          className="rounded border-2 border-gray-700 bg-black px-3 py-1.5 text-sm text-white focus:border-[#FFD700] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700]"
+          className="border-2 border-gray-700 bg-zinc-950 px-3 py-1.5 text-sm font-bold text-white focus:border-[#FFD700] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700]"
         >
           <option value="all">All Mopeds</option>
           {(Object.keys(MOPED_INFO) as MopedMake[]).map((make) => (
@@ -98,33 +100,33 @@ export function Leaderboard({ onBack, initialMoped }: LeaderboardProps) {
       </div>
 
       {/* Scores table */}
-      <div className="w-full max-w-2xl overflow-x-auto">
+      <div className="w-full overflow-x-auto border-4 border-gray-800 bg-zinc-950 p-3">
         {loading ? (
           <div className="py-12 text-center text-gray-400">Loading...</div>
         ) : error ? (
           <div
             role="alert"
-            className="flex flex-col items-center gap-3 rounded-lg border-2 border-red-500/50 bg-red-950/30 px-4 py-8 text-center"
+            className="flex flex-col items-center gap-3 border-2 border-red-500/50 bg-red-950/30 px-4 py-8 text-center"
           >
             <p className="text-sm text-red-300">{error}</p>
             <button
               type="button"
               onClick={() => void fetchScores()}
-              className="rounded border-2 border-[#FFD700] bg-[#FFD700] px-4 py-1.5 text-sm font-bold text-black transition-colors hover:bg-yellow-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+              className="border-2 border-[#FFD700] bg-[#FFD700] px-4 py-1.5 text-sm font-black uppercase text-black transition-colors hover:bg-yellow-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
             >
               Retry
             </button>
           </div>
         ) : scores.length === 0 ? (
           <div className="py-12 text-center text-gray-400">
-            No scores yet. Be the first!
+            No scores yet. Be the first on the streets!
           </div>
         ) : (
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b-2 border-gray-700 text-xs uppercase text-gray-400">
                 <th className="px-2 py-2">#</th>
-                <th className="px-2 py-2">Name</th>
+                <th className="px-2 py-2">Rider</th>
                 <th className="px-2 py-2">Score</th>
                 <th className="px-2 py-2">Distance</th>
                 <th className="hidden px-2 py-2 md:table-cell">Parts</th>
@@ -136,11 +138,15 @@ export function Leaderboard({ onBack, initialMoped }: LeaderboardProps) {
                 <tr
                   key={score.id}
                   className={`border-b border-gray-800 ${
-                    i < 3 ? "text-[#FFD700]" : "text-white"
+                    i === 0
+                      ? "bg-[#FFD700]/10 text-[#FFD700]"
+                      : i < 3
+                        ? "text-[#FFD700]"
+                        : "text-white"
                   }`}
                 >
-                  <td className="px-2 py-2 font-bold">{i + 1}</td>
-                  <td className="px-2 py-2">{score.playerName}</td>
+                  <td className="px-2 py-2 font-black">{i + 1}</td>
+                  <td className="px-2 py-2 font-bold">{score.playerName}</td>
                   <td
                     className="px-2 py-2 tabular-nums"
                     style={{ fontFamily: "var(--font-orbitron), Orbitron, monospace" }}
