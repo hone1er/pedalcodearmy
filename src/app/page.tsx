@@ -2,7 +2,9 @@ import PedalCodeArmyLanding from "@/components/pedal-code-army-landing-v2";
 import { type Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Pedal Code Army | East Bay Moped Gang & 3D Printed Parts",
+  title: {
+    absolute: "Pedal Code Army | East Bay Moped Gang & 3D Printed Parts",
+  },
   description:
     "Join the East Bay's premier moped gang! Weekly rides, vintage moped repairs, and custom 3D printed parts. Ride together, wrench together, and embrace the two-stroke madness.",
   keywords: [
@@ -60,10 +62,15 @@ const jsonLd = {
 
 export default function HomePage() {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-[#FFD700] to-[#15162c] text-white">
+    <main
+      id="main-content"
+      className="flex min-h-screen flex-col items-center justify-center bg-[#FFD700] text-black"
+    >
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c"),
+        }}
       />
       <PedalCodeArmyLanding />
     </main>

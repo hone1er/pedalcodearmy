@@ -40,7 +40,10 @@ function RetroStripe() {
 
 export default function BuildCalculatorPage() {
   return (
-    <main className="min-h-screen bg-gradient-to-b from-[#FFD700] to-[#15162c]">
+    <main
+      id="main-content"
+      className="min-h-screen bg-gradient-to-b from-[#FFD700] to-[#15162c] text-black"
+    >
       {/* Hero Section */}
       <section className="relative overflow-hidden bg-black py-16 text-[#FFD700]">
         <div className="container mx-auto px-4 text-center">
@@ -55,8 +58,16 @@ export default function BuildCalculatorPage() {
         </div>
 
         {/* Decorative elements */}
-        <div className="absolute -left-10 top-10 text-6xl opacity-20">💨</div>
-        <div className="absolute -right-10 bottom-10 text-6xl opacity-20">
+        <div
+          aria-hidden="true"
+          className="absolute -left-10 top-10 text-6xl opacity-20"
+        >
+          💨
+        </div>
+        <div
+          aria-hidden="true"
+          className="absolute -right-10 bottom-10 text-6xl opacity-20"
+        >
           🏎️
         </div>
       </section>
@@ -74,25 +85,31 @@ export default function BuildCalculatorPage() {
           </h2>
           <div className="mx-auto grid max-w-4xl gap-6 md:grid-cols-3">
             <div className="rounded-none border-4 border-[#FFD700] bg-black p-6 text-center">
-              <div className="mb-4 text-4xl">🔧</div>
+              <div className="mb-4 text-4xl" aria-hidden="true">
+                🔧
+              </div>
               <h3 className="mb-2 font-black uppercase">Start Stock</h3>
-              <p className="text-sm text-white/70">
+              <p className="text-sm text-white/80">
                 Always dial in your stock setup before adding performance parts.
                 A clean carb beats a dirty kit every time.
               </p>
             </div>
             <div className="rounded-none border-4 border-[#FFD700] bg-black p-6 text-center">
-              <div className="mb-4 text-4xl">⚙️</div>
+              <div className="mb-4 text-4xl" aria-hidden="true">
+                ⚙️
+              </div>
               <h3 className="mb-2 font-black uppercase">Match Your Parts</h3>
-              <p className="text-sm text-white/70">
+              <p className="text-sm text-white/80">
                 Pipe needs bigger jets. Kit needs bigger carb. Everything works
                 together - plan your full setup, not just one part.
               </p>
             </div>
             <div className="rounded-none border-4 border-[#FFD700] bg-black p-6 text-center">
-              <div className="mb-4 text-4xl">🛑</div>
+              <div className="mb-4 text-4xl" aria-hidden="true">
+                🛑
+              </div>
               <h3 className="mb-2 font-black uppercase">Brakes First</h3>
-              <p className="text-sm text-white/70">
+              <p className="text-sm text-white/80">
                 Going fast is fun. Stopping is mandatory. Upgrade your brakes
                 before you upgrade your speed.
               </p>
@@ -107,7 +124,7 @@ export default function BuildCalculatorPage() {
           <h2 className="mb-4 text-3xl font-black uppercase text-[#FFD700]">
             Trusted Vendors
           </h2>
-          <p className="mx-auto mb-8 max-w-xl text-white/70">
+          <p className="mx-auto mb-8 max-w-xl text-white/80">
             These are the shops we trust for quality moped parts. Support the
             community - buy from moped specialists.
           </p>
