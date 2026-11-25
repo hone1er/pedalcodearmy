@@ -107,7 +107,9 @@ export const ROUTE_PAR_SEC: Record<RouteId, number> = {
 
 export interface RoutePothole {
   positionM: number;
+  lane: 0 | 1;
   hit: boolean;
+  dodged: boolean;
 }
 
 /**
@@ -134,7 +136,17 @@ export function generatePotholes(route: RouteSpec, seed: number): RoutePothole[]
     while (pos < seg.endM && pos < route.lengthM - 25) {
       // Keep the stoplight stop box clear so idle tests stay clean
       const nearStop = stopZones.some((z) => Math.abs(pos - z) < 14);
-      if (!nearStop) out.push({ positionM: Math.round(pos * 10) / 10, hit: false });
+      if (!nearStop) {
+        let lane: 0 | 1 = out.length === 0 ? 0 : rng() < 0.5 ? 0 : 1;
+        if (out.length >= 2) {
+          const prev1 = out[out.length - 1]!;
+          const prev2 = out[out.length - 2]!;
+          if (prev1.lane === lane && prev2.lane === lane) {
+            lane = lane === 0 ? 1 : 0;
+          }
+        }
+        out.push({ positionM: Math.round(pos * 10) / 10, lane, hit: false, dodged: false });
+      }
       pos += spacing * nextRange(rng, 0.8, 1.2);
     }
     cursor = pos;
