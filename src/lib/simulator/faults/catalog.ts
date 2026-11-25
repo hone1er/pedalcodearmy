@@ -16,7 +16,8 @@ import { type Rng, chance, pickWeighted } from "../core/rng";
 import type { ActiveFault, FaultId, OwnedBike, PartSpec } from "../contract";
 import { getIdealJetForBike } from "../economy/catalog";
 
-export type WearKey = keyof OwnedBike["wear"];
+/** Wear fields that can raise a hidden fault (the air filter is pure maintenance). */
+export type WearKey = Exclude<keyof OwnedBike["wear"], "airFilterDirt">;
 
 export interface FaultDefinition {
   id: FaultId;

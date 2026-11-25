@@ -10,9 +10,12 @@ import {
   Wrench,
 } from "lucide-react";
 import type {
+  BikeVerdict,
   HotspotId,
   OwnedBike,
+  RideTelemetrySnapshot,
   SimBikeMake,
+  SmokeTint,
   ToolId,
 } from "@/lib/simulator/contract";
 import { getToolById } from "@/lib/simulator/diagnostics/tools";
@@ -22,7 +25,8 @@ export interface MopedWorkbenchProps {
   bike: OwnedBike;
   selectedTool: ToolId;
   garageFuelDrip: boolean;
-  bikeNeedsAttention: boolean;
+  bikeVerdict: BikeVerdict;
+  standTest?: RideTelemetrySnapshot | null;
   lastHotspot?: HotspotId | null;
   onHotspotClick: (hotspot: HotspotId) => void;
 }
@@ -66,7 +70,7 @@ function getHotspotsForMake(make: SimBikeMake): HotspotMeta[] {
     if (make === "derbi-variant") {
       // Derbi Variant SL tank is the boxy trapezoidal enclosure under the flat bench seat
       if (spot.id === "gas-tank") return { ...spot, xPct: 37, yPct: 55 };
-      if (spot.id === "fuel-filter") return { ...spot, xPct: 45, yPct: 59 };
+      if (spot.id === "fuel-filter") return { ...spot, xPct: 41, yPct: 54 };
       if (spot.id === "spark-plug") return { ...spot, xPct: 64, yPct: 57 };
     }
     if (make === "tomos-a35") {
@@ -480,11 +484,69 @@ function BikeFrameGeometry({
   );
 }
 
+function getFuelLineGeometry(make: SimBikeMake): {
+  pathD: string;
+  filterX: number;
+  filterY: number;
+  filterMidY: number;
+} {
+  if (make === "honda-hobbit") {
+    return {
+      pathD: "M 276 258 Q 328 248 376 274",
+      filterX: 318,
+      filterY: 244,
+      filterMidY: 256,
+    };
+  }
+  if (make === "derbi-variant") {
+    return {
+      pathD: "M 312 268 Q 344 252 376 274",
+      filterX: 334,
+      filterY: 248,
+      filterMidY: 260,
+    };
+  }
+  return {
+    pathD: "M 438 250 Q 402 246 376 274",
+    filterX: 396,
+    filterY: 242,
+    filterMidY: 254,
+  };
+}
+
+function getTailpipeTip(exhaustVisual: "stock" | "performance" | "race"): {
+  x: number;
+  y: number;
+} {
+  if (exhaustVisual === "race") return { x: 106, y: 374 };
+  if (exhaustVisual === "performance") return { x: 134, y: 377 };
+  return { x: 164, y: 386 };
+}
+
+function getSmokeStyle(
+  tint: SmokeTint,
+  density: number,
+): { fill: string; maxOpacity: number; scale: number } {
+  const d = Math.max(0.2, Math.min(1, density));
+  switch (tint) {
+    case "thick-blue-grey":
+      return { fill: "#94A3B8", maxOpacity: 0.55 + d * 0.35, scale: 1.45 };
+    case "light-blue":
+      return { fill: "#93C5FD", maxOpacity: 0.35 + d * 0.28, scale: 1.05 };
+    case "white-steam":
+      return { fill: "#F8FAFC", maxOpacity: 0.45 + d * 0.35, scale: 1.2 };
+    case "clear":
+    default:
+      return { fill: "#E4E4E7", maxOpacity: 0.14, scale: 0.75 };
+  }
+}
+
 export function MopedWorkbench({
   bike,
   selectedTool,
   garageFuelDrip,
-  bikeNeedsAttention,
+  bikeVerdict,
+  standTest,
   lastHotspot,
   onHotspotClick,
 }: MopedWorkbenchProps) {
@@ -500,6 +562,13 @@ export function MopedWorkbench({
     activeToolSpec?.validHotspots ?? [],
   );
   const hotspots = getHotspotsForMake(bike.make);
+  const fuelLine = getFuelLineGeometry(bike.make);
+  const tailpipe = getTailpipeTip(exhaustVisual);
+  const standRunning = Boolean(standTest?.engineRunning);
+  const standThrottle = standTest?.throttle ?? 0;
+  const smokeStyle = standTest
+    ? getSmokeStyle(standTest.smoke.tint, standTest.smoke.density)
+    : null;
 
   return (
     <section
@@ -555,14 +624,18 @@ export function MopedWorkbench({
               Fuel Drip!
             </span>
           )}
-          {bikeNeedsAttention ? (
-            <span className="inline-flex items-center gap-1 border-2 border-[#FFD700] bg-[#FFD700]/15 px-2 py-0.5 text-[11px] font-black uppercase text-[#FFD700]">
+          {bikeVerdict === "acting-up" ? (
+            <span className="inline-flex items-center gap-1 border-2 border-orange-500 bg-red-950/70 px-2 py-0.5 text-[11px] font-black uppercase text-orange-200">
               <Wrench className="h-3 w-3" aria-hidden="true" />
-              Needs Wrenching
+              ACTING UP
+            </span>
+          ) : bikeVerdict === "ran-clean" ? (
+            <span className="inline-flex items-center gap-1 border-2 border-emerald-400 bg-emerald-950 px-2 py-0.5 text-[11px] font-black uppercase text-emerald-200">
+              RAN CLEAN
             </span>
           ) : (
-            <span className="inline-flex items-center gap-1 border-2 border-emerald-400 bg-emerald-950 px-2 py-0.5 text-[11px] font-black uppercase text-emerald-200">
-              Dialed &amp; Ready
+            <span className="inline-flex items-center gap-1 border-2 border-amber-400/70 bg-amber-950/40 px-2 py-0.5 text-[11px] font-black uppercase text-amber-200">
+              UNTESTED — TAKE A RIDE
             </span>
           )}
         </div>
@@ -793,12 +866,71 @@ export function MopedWorkbench({
             </g>
           )}
 
+          {/* STAND TEST EXHAUST SMOKE PUFFS */}
+          {standRunning && smokeStyle && (
+            <g aria-hidden="true">
+              {[0, 1, 2, 3].map((idx) => {
+                const dur = standThrottle > 0.25 ? "0.65s" : "1.05s";
+                const begin = `${(idx * 0.24).toFixed(2)}s`;
+                const dx = -(55 + idx * 14);
+                const dy = -(16 + (idx % 2) * 14);
+                return (
+                  <circle
+                    key={idx}
+                    cx={tailpipe.x}
+                    cy={tailpipe.y}
+                    r={6 * smokeStyle.scale}
+                    fill={smokeStyle.fill}
+                    opacity={0}
+                  >
+                    <animateTransform
+                      attributeName="transform"
+                      type="translate"
+                      from="0 0"
+                      to={`${dx} ${dy}`}
+                      dur={dur}
+                      begin={begin}
+                      repeatCount="indefinite"
+                    />
+                    <animate
+                      attributeName="r"
+                      values={`${5 * smokeStyle.scale};${16 * smokeStyle.scale};${24 * smokeStyle.scale}`}
+                      dur={dur}
+                      begin={begin}
+                      repeatCount="indefinite"
+                    />
+                    <animate
+                      attributeName="opacity"
+                      values={`0;${smokeStyle.maxOpacity.toFixed(2)};0`}
+                      keyTimes="0;0.25;1"
+                      dur={dur}
+                      begin={begin}
+                      repeatCount="indefinite"
+                    />
+                  </circle>
+                );
+              })}
+            </g>
+          )}
+
           {/* BIKE MAKE-SPECIFIC FRAME */}
           <BikeFrameGeometry
             make={bike.make}
             colorHex={bike.colorHex}
             accentHex={bike.accentHex}
           />
+
+          {/* ENGINE GROUP (vibrates subtly while idling/revving on center stand) */}
+          <g>
+            {standRunning && (
+              <animateTransform
+                attributeName="transform"
+                type="translate"
+                values="0 0; 0.9 -0.8; -0.8 0.7; 0.6 0.6; 0 0"
+                dur={standThrottle > 0.25 ? "0.06s" : "0.11s"}
+                repeatCount="indefinite"
+              />
+            )}
 
           {/* ENGINE CASES, CRANKCASE, CLUTCH & IGNITION */}
           <g>
@@ -983,17 +1115,17 @@ export function MopedWorkbench({
               />
             )}
 
-            {/* Fuel line & inline translucent filter from tank down to carb */}
+            {/* Fuel line & inline translucent filter from make-specific tank petcock down to carb */}
             <path
-              d="M 402 204 Q 364 226 376 274"
+              d={fuelLine.pathD}
               fill="none"
               stroke="#FACC15"
               strokeWidth="4"
               strokeLinecap="round"
             />
             <rect
-              x="362"
-              y="234"
+              x={fuelLine.filterX}
+              y={fuelLine.filterY}
               width="16"
               height="24"
               rx="5"
@@ -1002,7 +1134,15 @@ export function MopedWorkbench({
               stroke="#18181B"
               strokeWidth="2"
             />
-            <line x1="364" y1="246" x2="376" y2="246" stroke="#EA580C" strokeWidth="3" />
+            <line
+              x1={fuelLine.filterX + 2}
+              y1={fuelLine.filterMidY}
+              x2={fuelLine.filterX + 14}
+              y2={fuelLine.filterMidY}
+              stroke="#EA580C"
+              strokeWidth="3"
+            />
+          </g>
           </g>
 
           {/* Visual Upgrade Callout Badges inside SVG */}
@@ -1042,33 +1182,40 @@ export function MopedWorkbench({
                 left: `${spot.xPct}%`,
                 top: `${spot.yPct}%`,
               }}
-              className={`group absolute z-10 -translate-x-1/2 -translate-y-1/2 rounded-full transition-transform hover:z-30 focus-visible:z-30 focus-visible:scale-125 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FFD700] ${
+              className={`group absolute z-10 flex h-11 w-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full transition-transform hover:z-30 focus-visible:z-30 focus-visible:scale-125 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FFD700] ${
                 isValid
-                  ? "h-8 w-8 sm:h-9 sm:w-9"
-                  : "h-6 w-6 opacity-75 hover:opacity-100"
+                  ? ""
+                  : "opacity-80 hover:opacity-100"
               }`}
             >
-              {/* Pulsing target ring for valid tool hotspots */}
-              {isValid && (
-                <span
-                  aria-hidden="true"
-                  className="absolute inset-0 animate-ping rounded-full bg-[#FFD700]/60 motion-reduce:animate-none"
-                />
-              )}
+              {/* Visual pin centered inside a 44x44 mobile-friendly touch target */}
               <span
-                aria-hidden="true"
-                className={`relative flex h-full w-full items-center justify-center rounded-full border-2 font-black shadow-[0_0_0_2px_rgba(0,0,0,0.9)] transition-colors ${
-                  isValid
-                    ? isLast
-                      ? "border-black bg-cyan-400 text-black"
-                      : "border-black bg-[#FFD700] text-black group-hover:bg-white"
-                    : "border-zinc-400 bg-zinc-900/90 text-zinc-300 group-hover:border-[#FFD700] group-hover:text-[#FFD700]"
+                className={`relative flex items-center justify-center rounded-full ${
+                  isValid ? "h-8 w-8 sm:h-9 sm:w-9" : "h-6 w-6"
                 }`}
               >
-                <Crosshair
-                  className={isValid ? "h-4 w-4" : "h-3 w-3"}
+                {/* Pulsing target ring for valid tool hotspots */}
+                {isValid && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute inset-0 animate-ping rounded-full bg-[#FFD700]/60 motion-reduce:animate-none"
+                  />
+                )}
+                <span
                   aria-hidden="true"
-                />
+                  className={`relative flex h-full w-full items-center justify-center rounded-full border-2 font-black shadow-[0_0_0_2px_rgba(0,0,0,0.9)] transition-colors ${
+                    isValid
+                      ? isLast
+                        ? "border-black bg-cyan-400 text-black"
+                        : "border-black bg-[#FFD700] text-black group-hover:bg-white"
+                      : "border-zinc-400 bg-zinc-900/90 text-zinc-300 group-hover:border-[#FFD700] group-hover:text-[#FFD700]"
+                  }`}
+                >
+                  <Crosshair
+                    className={isValid ? "h-4 w-4" : "h-3 w-3"}
+                    aria-hidden="true"
+                  />
+                </span>
               </span>
 
               {/* Tooltip (hover/focus only so neighboring pins stay unobstructed) */}
@@ -1106,7 +1253,7 @@ export function MopedWorkbench({
                 key={spot.id}
                 type="button"
                 onClick={() => onHotspotClick(spot.id)}
-                className={`border-2 px-2 py-1 text-[11px] font-black uppercase tracking-wide transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] ${
+                className={`min-h-[38px] border-2 px-2.5 py-1.5 text-xs font-black uppercase tracking-wide transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] sm:min-h-0 sm:px-2 sm:py-1 sm:text-[11px] ${
                   isValid
                     ? "border-[#FFD700] bg-[#FFD700]/15 text-[#FFD700] hover:bg-[#FFD700] hover:text-black"
                     : "border-zinc-800 bg-zinc-950 text-zinc-400 hover:border-zinc-500 hover:text-white"

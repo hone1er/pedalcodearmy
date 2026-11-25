@@ -1,11 +1,16 @@
 // Zod-validated localStorage persistence for Ran When Parked.
 // Any missing / corrupt / incompatible save falls back to the starter save.
+//
+// Schema v2 (V2 polish): route medals, Runner best distance, air filter dirt,
+// and the road-tested bike verdict. v1 saves are migrated in place on load.
 
 import { z } from "zod";
 import { FIXTURE_SAVE } from "../contract/fixtures";
 import type { SimSaveState } from "../contract";
 
+/** Kept at "-v1" on purpose: the key never changes so existing saves migrate. */
 export const SAVE_STORAGE_KEY = "pca-rwp-save-v1";
+export const CURRENT_SAVE_VERSION = 2 as const;
 
 const makeSchema = z.enum(["puch-maxi", "honda-hobbit", "derbi-variant", "tomos-a35"]);
 const faultIdSchema = z.enum([
@@ -36,6 +41,8 @@ const routeIdSchema = z.enum([
   "midnight-tunnel",
 ]);
 const upgradeIdSchema = z.enum(["gauge-tach", "gauge-cht", "tool-stethoscope"]);
+const routeMedalSchema = z.enum(["finished", "speed", "cool-head", "hot-coffee"]);
+const verdictSchema = z.enum(["untested", "ran-clean", "acting-up"]);
 const wearValue = z.number().finite().min(0).max(100);
 
 const bikeSchema = z.object({
@@ -79,13 +86,15 @@ const bikeSchema = z.object({
     clutchWear: wearValue,
     fuelFilterClog: wearValue,
     gasketWear: wearValue,
+    airFilterDirt: wearValue.optional(),
   }),
   lastPlugColor: plugColorSchema,
+  verdict: verdictSchema.optional(),
   wrongSwapsStreak: z.number().int().min(0),
 });
 
 export const SaveSchema: z.ZodType<SimSaveState> = z.object({
-  version: z.literal(1),
+  version: z.union([z.literal(1), z.literal(2)]),
   seed: z.number().finite(),
   cash: z.number().finite(),
   rep: z.number().finite(),
@@ -94,6 +103,8 @@ export const SaveSchema: z.ZodType<SimSaveState> = z.object({
   inventory: z.array(z.string()),
   upgrades: z.array(upgradeIdSchema),
   completedRoutes: z.array(routeIdSchema),
+  routeMedals: z.record(routeIdSchema, z.array(routeMedalSchema)).optional(),
+  runnerBestDistanceM: z.number().finite().min(0).optional(),
   journal: z.array(
     z.object({
       id: z.string(),
@@ -127,8 +138,27 @@ export const SaveSchema: z.ZodType<SimSaveState> = z.object({
  * toolbox, and the intro journal entry.
  */
 export function createStarterSave(seed?: number): SimSaveState {
-  const save = structuredClone(FIXTURE_SAVE);
+  const save = migrateSave(structuredClone(FIXTURE_SAVE));
   if (seed !== undefined) save.seed = seed >>> 0;
+  return save;
+}
+
+/**
+ * Bring any valid save up to the current schema (v2). Mutates and returns it.
+ * Idempotent: safe to run on an already-v2 save.
+ */
+export function migrateSave(save: SimSaveState): SimSaveState {
+  save.version = CURRENT_SAVE_VERSION;
+  save.routeMedals ??= {};
+  for (const [routeId, medals] of Object.entries(save.routeMedals)) {
+    if (!medals) continue;
+    save.routeMedals[routeId as keyof typeof save.routeMedals] = [...new Set(medals)];
+  }
+  save.runnerBestDistanceM ??= 0;
+  for (const bike of save.bikes) {
+    bike.wear.airFilterDirt ??= 0;
+    bike.verdict ??= "untested";
+  }
   return save;
 }
 
@@ -145,7 +175,7 @@ function getStorage(): Storage | null {
 export function parseSave(raw: unknown): SimSaveState | null {
   const result = SaveSchema.safeParse(raw);
   if (!result.success) return null;
-  const save = result.data;
+  const save = migrateSave(result.data);
   if (!save.bikes.some((b) => b.id === save.activeBikeId)) {
     const first = save.bikes[0];
     if (!first) return null;

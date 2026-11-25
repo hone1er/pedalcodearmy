@@ -142,6 +142,8 @@ export const FIXTURE_APP_SNAPSHOT: SimAppSnapshot = {
   phase: "GARAGE",
   save: FIXTURE_SAVE,
   ride: null,
+  standTest: null,
+  runnerPlaying: false,
   lastRideSummary: null,
   lastRunnerSummary: null,
   selectedTool: "visual",
@@ -149,6 +151,7 @@ export const FIXTURE_APP_SNAPSHOT: SimAppSnapshot = {
   plugViewerColor: null,
   lastActionNotice: null,
   garageFuelDrip: false,
-  bikeNeedsAttention: true,
+  bikeVerdict: "untested",
+  bikeNeedsAttention: false,
   jetRange: { min: 52, max: 88 },
 };

@@ -99,3 +99,15 @@ export type ShopVendorId =
   | "bay-mopeds"
   | "golden-gate-parts"
   | "east-bay-speed";
+
+export type BikeVerdict = "untested" | "ran-clean" | "acting-up";
+
+export type RouteMedal = "finished" | "speed" | "cool-head" | "hot-coffee";
+
+export type StallReason =
+  | "none"
+  | "fuel"
+  | "spark"
+  | "idle"
+  | "plug-chop"
+  | "kill-switch";

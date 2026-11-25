@@ -5,7 +5,7 @@
 // Pedal Home mode, stoplights (idle test), potholes (coffee spill), comic
 // captions, and a telemetry snapshot builder that contains ZERO fault IDs.
 
-import { type Rng, chance, mulberry32, nextRange } from "../core/rng";
+import { type Rng, mulberry32, nextRange } from "../core/rng";
 import type {
   ComicCaption,
   OwnedBike,
@@ -13,6 +13,7 @@ import type {
   RideInput,
   RideSummary,
   RideTelemetrySnapshot,
+  RouteMedal,
   RouteSpec,
   SimEvent,
 } from "../contract";
@@ -26,7 +27,7 @@ import {
   rideEndPlugColor,
   stepEngine,
 } from "../engine/engine-sim";
-import { segmentAt } from "./routes";
+import { ROUTE_PAR_SEC, type RoutePothole, generatePotholes, segmentAt } from "./routes";
 
 export const MPS_TO_MPH = 2.236936;
 export const TOW_COST = 35;
@@ -36,6 +37,35 @@ const TUCK_DRAG_MULT = 0.76;
 const BRAKE_FORCE_N = 750;
 const STOPLIGHT_DECEL = 3.2;
 const COFFEE_BONUS_CASH = 15;
+/** Below this speed (or with the brake held) a pothole only jostles the cup. */
+const POTHOLE_CAREFUL_MPH = 14;
+
+/**
+ * Optional V2 engine/profile fields added by the core engine lane. Read through
+ * these anchored shapes so this file compiles before and after they land.
+ */
+interface GearReadout {
+  rpm: number;
+  currentGear?: number;
+  gearShiftPulse?: boolean;
+}
+interface AirFilterReadout {
+  maxRpm: number;
+  airFilterVisual?: string;
+}
+
+function readGear(eng: GearReadout): { currentGear?: 1 | 2; gearShiftPulse?: boolean } {
+  const g = eng.currentGear;
+  return {
+    ...(g === 1 || g === 2 ? { currentGear: g } : {}),
+    ...(typeof eng.gearShiftPulse === "boolean" ? { gearShiftPulse: eng.gearShiftPulse } : {}),
+  };
+}
+
+function readAirFilterVisual(p: AirFilterReadout): "stock" | "performance" | "race" | undefined {
+  const v = p.airFilterVisual;
+  return v === "stock" || v === "performance" || v === "race" ? v : undefined;
+}
 
 export interface Stoplight {
   positionM: number;
@@ -79,6 +109,8 @@ export interface RideState {
   coffeeTempPct: number | null;
   coffeeSpillPct: number | null;
   lastPotholeSec: number;
+  /** Real, pre-generated pothole world positions (deterministic per seed). */
+  potholes: RoutePothole[];
 
   captions: ComicCaption[];
   captionSeq: number;
@@ -147,6 +179,7 @@ export function createRideState(bike: OwnedBike, route: RouteSpec, opts: RideOpt
     coffeeTempPct: route.hasCoffeeCup ? 100 : null,
     coffeeSpillPct: route.hasCoffeeCup ? 0 : null,
     lastPotholeSec: -10,
+    potholes: generatePotholes(route, opts.seed),
     captions: [],
     captionSeq: 1,
     captionCooldowns: {},
@@ -375,6 +408,7 @@ export function stepRide(state: RideState, input: RideInput, dt: number): SimEve
   // Pedal-home creep: you can always push forward a bit while pedaling
   state.speedMps = newV;
   const ds = newV * dt;
+  const prevDistanceM = state.distanceM;
   state.distanceM = Math.min(route.lengthM, state.distanceM + ds);
   if (state.pedalingHome) {
     state.pedalHomeRemainingM = Math.max(0, state.pedalHomeRemainingM - ds);
@@ -383,15 +417,25 @@ export function stepRide(state: RideState, input: RideInput, dt: number): SimEve
   const mph = newV * MPS_TO_MPH;
   state.topSpeedMph = Math.max(state.topSpeedMph, mph);
 
-  // ── Potholes & coffee ──
-  const density = seg?.potholeDensity ?? 0;
-  if (ds > 0 && state.elapsedSec - state.lastPotholeSec > 1.5 && chance(rng, density * 0.012 * ds)) {
-    state.lastPotholeSec = state.elapsedSec;
-    events.push({ type: "pothole-bump" });
-    if (state.coffeeSpillPct !== null) {
-      const spill = 1.5 + mph * 0.18;
-      state.coffeeSpillPct = clamp(state.coffeeSpillPct + spill, 0, 100);
-      if (spill > 4) addCaption(state, events, `Pothole! Coffee sloshes (-${Math.round(spill)}%)`, "white", "spill", 4);
+  // ── Real potholes & coffee (skill-based: brake or slow down before them) ──
+  if (state.distanceM > prevDistanceM) {
+    for (const hole of state.potholes) {
+      if (hole.hit) continue;
+      if (hole.positionM > state.distanceM) break;
+      if (hole.positionM <= prevDistanceM) continue;
+      hole.hit = true;
+      state.lastPotholeSec = state.elapsedSec;
+      events.push({ type: "pothole-bump" });
+      if (state.coffeeSpillPct !== null) {
+        const careful = input.brake || mph < POTHOLE_CAREFUL_MPH;
+        const spill = (1.5 + mph * 0.18) * (careful ? 0.25 : 1);
+        state.coffeeSpillPct = clamp(state.coffeeSpillPct + spill, 0, 100);
+        if (careful) {
+          addCaption(state, events, "Braked for pothole — coffee saved!", "cyan", "spill-saved", 4);
+        } else if (spill > 4) {
+          addCaption(state, events, `Pothole! Coffee sloshes (-${Math.round(spill)}%)`, "white", "spill", 4);
+        }
+      }
     }
   }
   if (state.coffeeTempPct !== null) {
@@ -444,6 +488,15 @@ function narrateSymptoms(state: RideState, events: SimEvent[], dt: number, wasRu
         }
         else if (ev.reason === "plug-chop")
           addCaption(state, events, "PLUG CHOP! Killed it clean at full throttle — go read that plug.", "cyan");
+        else if (ev.reason === "kill-switch")
+          addCaption(
+            state,
+            events,
+            "Not enough throttle for a clean chop — hold it wide open!",
+            "cyan",
+            "chop-low-thr",
+            4,
+          );
         else if (ev.reason === "spark") addCaption(state, events, "It just cut out.", "orange", "stall-spark", 5);
         break;
       default:
@@ -493,10 +546,38 @@ function narrateSymptoms(state: RideState, events: SimEvent[], dt: number, wasRu
 
 // ── TELEMETRY ──────────────────────────────────────────────────────────────
 
+/** Closest upcoming (or just-reached) stoplight within -12 m..+90 m of the rider. */
+function nearestStoplight(state: RideState): Stoplight | null {
+  let best: Stoplight | null = null;
+  let bestAbs = Infinity;
+  for (const light of state.stoplights) {
+    const d = light.positionM - state.distanceM;
+    if (d < -12 || d > 90) continue;
+    // Prefer the light ahead; a light just passed only counts while it's still holding you.
+    const score = d >= 0 ? d : 90 - d;
+    if (score < bestAbs) {
+      bestAbs = score;
+      best = light;
+    }
+  }
+  return best;
+}
+
 export function buildRideSnapshot(state: RideState): RideTelemetrySnapshot {
   const eng = state.engine;
   const p = state.profile;
   const input = state.input;
+  const light = nearestStoplight(state);
+  const upcomingPotholesM: number[] = [];
+  let nextPotholeM: number | null = null;
+  for (const hole of state.potholes) {
+    const d = hole.positionM - state.distanceM;
+    if (d < -15) continue;
+    if (d > 75) break;
+    upcomingPotholesM.push(hole.positionM);
+    if (!hole.hit && d >= 0 && nextPotholeM === null) nextPotholeM = d;
+  }
+  const airFilterVisual = readAirFilterVisual(p);
   return {
     active: !state.finished,
     routeId: state.route.id,
@@ -507,6 +588,7 @@ export function buildRideSnapshot(state: RideState): RideTelemetrySnapshot {
     bikeAccentHex: state.bike.accentHex,
     exhaustVisual: p.exhaustVisual,
     cylinderVisual: p.cylinderVisual,
+    ...(airFilterVisual ? { airFilterVisual } : {}),
     distanceM: state.distanceM,
     routeLengthM: state.route.lengthM,
     speedMph: state.speedMps * MPS_TO_MPH,
@@ -514,6 +596,10 @@ export function buildRideSnapshot(state: RideState): RideTelemetrySnapshot {
     landmark: state.landmark,
     atStoplight: state.atStoplight,
     stoplightRedSec: state.stoplightRedSec,
+    nextStoplightM: light ? light.positionM : null,
+    nextStoplightState: light ? light.state : null,
+    upcomingPotholesM,
+    nextPotholeM,
     throttle: input.throttle,
     brake: input.brake,
     tuck: input.tuck,
@@ -545,6 +631,8 @@ export function buildRideSnapshot(state: RideState): RideTelemetrySnapshot {
     seizeActive: eng.seizeActive,
     seizeClutchWindowMs: eng.seizeActive ? Math.max(0, eng.seizeWindowMs) : 0,
     seizedHard: eng.seizedHard,
+    seizeCooldownHot: eng.seizeSavedPending && eng.chtC > SEIZE_RESTART_CHT_C,
+    ...readGear(eng),
     pedalingHome: state.pedalingHome,
     pedalHomeRemainingM: state.pedalHomeRemainingM,
     coffeeTempPct: state.coffeeTempPct,
@@ -612,7 +700,22 @@ export function finalizeRide(
     clutchWear: km * 1.5 + eng.slipSec * 1.2,
     fuelFilterClog: km * 2.5,
     gasketWear: km * 2,
+    airFilterDirt: km * 1.4,
   };
+
+  const medalsEarned: RouteMedal[] = [];
+  if (outcome === "finished") {
+    medalsEarned.push("finished");
+    if (state.elapsedSec <= ROUTE_PAR_SEC[route.id]) medalsEarned.push("speed");
+    if (eng.maxChtC < 190 && state.opts.hasChtGauge) medalsEarned.push("cool-head");
+    const hotCoffee = route.hasCoffeeCup
+      ? state.coffeeTempPct !== null &&
+        state.coffeeSpillPct !== null &&
+        state.coffeeTempPct >= 45 &&
+        state.coffeeSpillPct <= 35
+      : state.notes.length === 0 && eng.detonations === 0 && eng.seizesSaved === 0;
+    if (hotCoffee) medalsEarned.push("hot-coffee");
+  }
 
   const summary: RideSummary = {
     routeId: route.id,
@@ -626,6 +729,7 @@ export function finalizeRide(
     towCost,
     plugChopCaptured: eng.plugChopColor !== null,
     notes,
+    ...(outcome === "finished" ? { medalsEarned } : {}),
   };
   return {
     summary,

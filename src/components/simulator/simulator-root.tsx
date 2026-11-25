@@ -18,7 +18,11 @@ import type { RideSummary, SimPhase } from "@/lib/simulator/contract";
 import { getRouteById } from "@/lib/simulator/ride/routes";
 import { getActiveBike, useSimStore } from "@/lib/simulator/store/sim-store";
 import { GarageView } from "./garage/garage-view";
-import { RouteMap } from "./map/route-map";
+import {
+  ROUTE_MEDAL_ORDER,
+  RouteMap,
+  getRouteMedalMeta,
+} from "./map/route-map";
 import { RideView } from "./ride/ride-view";
 import { RunnerView } from "./runner/runner-view";
 import { CraigslistMarket } from "./shop/craigslist-market";
@@ -303,6 +307,37 @@ function RideSummaryModal({
             </div>
           )}
 
+          {summary.medalsEarned && summary.medalsEarned.length > 0 && (
+            <div className="border-2 border-zinc-800 bg-black p-3.5">
+              <p className="mb-2 text-[11px] font-black uppercase tracking-widest text-[#FFD700]">
+                Route Medals Earned
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {ROUTE_MEDAL_ORDER.filter((m) =>
+                  summary.medalsEarned?.includes(m),
+                ).map((medal) => {
+                  const meta = getRouteMedalMeta(medal, route?.hasCoffeeCup);
+                  const MedalIcon = meta.icon;
+                  const isNew = summary.newMedals?.includes(medal);
+                  return (
+                    <span
+                      key={medal}
+                      className={`inline-flex items-center gap-1.5 border-2 px-2.5 py-1 text-xs font-black uppercase ${meta.className}`}
+                    >
+                      <MedalIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                      <span>{meta.label}</span>
+                      {isNew && (
+                        <span className="bg-[#FFD700] px-1.5 py-0.5 text-[9px] font-black text-black">
+                          NEW!
+                        </span>
+                      )}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {summary.notes.length > 0 && (
             <div className="border-2 border-zinc-800 bg-black p-3.5">
               <p className="mb-2 text-[11px] font-black uppercase tracking-widest text-[#FFD700]">
@@ -341,9 +376,10 @@ export function SimulatorRoot() {
   const {
     phase,
     save,
+    runnerPlaying,
     lastRideSummary,
     lastActionNotice,
-    bikeNeedsAttention,
+    bikeVerdict,
     setPhase,
     clearNotice,
     dismissRideSummary,
@@ -354,6 +390,7 @@ export function SimulatorRoot() {
 
   const bike = getActiveBike(save);
   const isRiding = phase === "RIDE" || phase === "ROADSIDE";
+  const hideChrome = isRiding || runnerPlaying;
   const viewGroup = isRiding ? "RIDE" : phase;
   const didMountRef = useRef(false);
 
@@ -365,10 +402,38 @@ export function SimulatorRoot() {
     window.scrollTo({ top: 0, behavior: "instant" });
   }, [viewGroup]);
 
+  // Lock body scroll & pull-to-refresh on mobile while driving so thumbs never fight page scroll
+  useEffect(() => {
+    if (!hideChrome || typeof window === "undefined") return;
+    const mql = window.matchMedia("(max-width: 767px)");
+    const prevOverflow = document.body.style.overflow;
+    const prevOverscroll = document.body.style.overscrollBehavior;
+    const applyLock = () => {
+      if (mql.matches) {
+        document.body.style.overflow = "hidden";
+        document.body.style.overscrollBehavior = "none";
+      } else {
+        document.body.style.overflow = prevOverflow;
+        document.body.style.overscrollBehavior = prevOverscroll;
+      }
+    };
+    applyLock();
+    mql.addEventListener("change", applyLock);
+    return () => {
+      mql.removeEventListener("change", applyLock);
+      document.body.style.overflow = prevOverflow;
+      document.body.style.overscrollBehavior = prevOverscroll;
+    };
+  }, [hideChrome]);
+
   return (
     <div className="min-h-[calc(100vh-80px)] bg-black text-white">
-      {/* Top Arcade Status Bar */}
-      <header className="border-b-4 border-[#FFD700] bg-zinc-950">
+      {/* Top Arcade Status Bar (hidden on mobile while actively driving so full viewport goes to the road + thumb pads) */}
+      <header
+        className={`border-b-4 border-[#FFD700] bg-zinc-950 ${
+          hideChrome ? "hidden md:block" : ""
+        }`}
+      >
         <div className="container mx-auto max-w-7xl px-4 py-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             {/* Brand + Active Bike */}
@@ -388,20 +453,42 @@ export function SimulatorRoot() {
                 <span className="max-w-[140px] truncate sm:max-w-none">
                   {bike.nickname}
                 </span>
-                {bikeNeedsAttention && (
+                {bikeVerdict === "acting-up" ? (
                   <span
                     className="relative inline-flex h-2 w-2 shrink-0"
-                    title="Bike needs attention"
+                    title="Acting up — last ride showed symptoms"
                   >
                     <span
                       aria-hidden="true"
-                      className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#FFD700] opacity-75 motion-reduce:animate-none"
+                      className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75 motion-reduce:animate-none"
                     />
                     <span
                       aria-hidden="true"
-                      className="relative inline-flex h-2 w-2 rounded-full bg-[#FFD700]"
+                      className="relative inline-flex h-2 w-2 rounded-full bg-amber-400"
                     />
-                    <span className="sr-only">Bike needs attention</span>
+                    <span className="sr-only">Acting up on last ride</span>
+                  </span>
+                ) : bikeVerdict === "ran-clean" ? (
+                  <span
+                    className="relative inline-flex h-2 w-2 shrink-0"
+                    title="Ran clean on last ride"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="inline-flex h-2 w-2 rounded-full bg-emerald-400"
+                    />
+                    <span className="sr-only">Ran clean</span>
+                  </span>
+                ) : (
+                  <span
+                    className="relative inline-flex h-2 w-2 shrink-0"
+                    title="Untested — take a ride"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="inline-flex h-2 w-2 rounded-full bg-cyan-400/75"
+                    />
+                    <span className="sr-only">Untested</span>
                   </span>
                 )}
               </span>
@@ -428,7 +515,7 @@ export function SimulatorRoot() {
                 {save.rep} REP
               </div>
 
-              {!isRiding &&
+              {!hideChrome &&
                 (confirmingReset ? (
                   <div className="flex items-center gap-1.5 border-2 border-red-500 bg-red-950/70 px-2 py-1">
                     <span className="text-[10px] font-black uppercase text-red-200">
@@ -468,10 +555,10 @@ export function SimulatorRoot() {
           </div>
 
           {/* Phase Switcher Tabs */}
-          {!isRiding ? (
+          {!hideChrome ? (
             <nav
               aria-label="Simulator sections"
-              className="mt-3 flex flex-wrap gap-2 border-t border-zinc-800 pt-3"
+              className="mt-3 flex flex-nowrap gap-2 overflow-x-auto border-t border-zinc-800 pt-3 pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0"
             >
               {PHASE_TABS.map(({ phase: tabPhase, label, icon: Icon }) => {
                 const active = phase === tabPhase;
@@ -481,7 +568,7 @@ export function SimulatorRoot() {
                     type="button"
                     onClick={() => setPhase(tabPhase)}
                     aria-current={active ? "page" : undefined}
-                    className={`inline-flex items-center gap-1.5 border-2 px-4 py-1.5 text-xs font-black uppercase tracking-wider transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] ${
+                    className={`inline-flex min-h-[40px] shrink-0 items-center gap-1.5 border-2 px-3.5 py-1.5 text-xs font-black uppercase tracking-wider transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] sm:min-h-0 sm:px-4 ${
                       active
                         ? "border-[#FFD700] bg-[#FFD700] text-black shadow-[3px_3px_0px_0px_#FFF]"
                         : "border-zinc-700 bg-black text-zinc-200 hover:border-[#FFD700] hover:text-[#FFD700]"
@@ -500,9 +587,11 @@ export function SimulatorRoot() {
           ) : (
             <div className="mt-3 flex items-center justify-between border-t border-zinc-800 pt-2 text-xs font-black uppercase tracking-widest text-[#FFD700]">
               <span>
-                {phase === "ROADSIDE"
-                  ? "ROADSIDE BREAKDOWN — PEDAL HOME OR CALL TOW"
-                  : "ON THE ROAD — LISTEN FOR SYMPTOMS"}
+                {runnerPlaying
+                  ? "STREET RUNNER — DODGE OAKLAND TRAFFIC"
+                  : phase === "ROADSIDE"
+                    ? "ROADSIDE BREAKDOWN — PEDAL HOME OR CALL TOW"
+                    : "ON THE ROAD — LISTEN FOR SYMPTOMS"}
               </span>
               <span className="text-zinc-400">{bike.nickname}</span>
             </div>
@@ -510,14 +599,20 @@ export function SimulatorRoot() {
         </div>
       </header>
 
-      {/* Main Content Container */}
-      <div className="container mx-auto max-w-7xl px-4 py-5">
+      {/* Main Content Container (full-viewport locked cockpit on mobile when driving) */}
+      <div
+        className={
+          hideChrome
+            ? "fixed inset-0 z-50 flex h-[100dvh] w-full flex-col overflow-hidden overscroll-none bg-black p-0 md:static md:inset-auto md:z-auto md:container md:mx-auto md:block md:h-auto md:max-w-7xl md:overflow-visible md:px-4 md:py-5"
+            : "container mx-auto max-w-7xl px-3 py-4 sm:px-4 sm:py-5"
+        }
+      >
         {/* Transient Action Notice Banner */}
         {lastActionNotice && (
           <div
             role="status"
             aria-live="polite"
-            className={`mb-4 flex items-center justify-between gap-3 border-2 px-4 py-2.5 text-sm font-bold shadow-[4px_4px_0px_0px_#000] ${noticeToneClass(
+            className={`${hideChrome ? "hidden md:flex" : "flex"} mb-4 items-center justify-between gap-3 border-2 px-4 py-2.5 text-sm font-bold shadow-[4px_4px_0px_0px_#000] ${noticeToneClass(
               lastActionNotice.tone,
             )}`}
           >

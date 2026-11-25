@@ -7,12 +7,18 @@
 //  • 60 Hz fixed-timestep ride loop driven by requestAnimationFrame while
 //    phase === "RIDE". React HUD notifications are throttled to ~15 Hz;
 //    Canvas/Audio read `simStore.getLatestRideSnapshot()` at full rate.
+//  • The same loop drives the garage Stand Test ("Fire it up!") while
+//    phase === "GARAGE"; Audio/SVG read `simStore.getLatestStandSnapshot()`.
 //  • Safe to import in Node (no window/rAF/localStorage required) so the whole
-//    sim can be driven headlessly via `simStore.advanceRide(ms)`.
+//    sim can be driven headlessly via `simStore.advanceRide(ms)` /
+//    `simStore.advanceStand(ms)`.
+//  • Bike verdicts ("untested" / "ran-clean" / "acting-up") come ONLY from
+//    road-tested observations — never from the hidden fault list.
 
 import { useMemo, useSyncExternalStore } from "react";
 import { mulberry32 } from "../core/rng";
 import type {
+  BikeVerdict,
   CraigslistListing,
   FaultId,
   HotspotId,
@@ -24,6 +30,7 @@ import type {
   RideSummary,
   RideTelemetrySnapshot,
   RouteId,
+  RouteMedal,
   RunnerRunResult,
   RunnerRunSummary,
   SimAppSnapshot,
@@ -31,6 +38,7 @@ import type {
   SimPhase,
   SimSaveState,
   SimStoreActions,
+  StandTestInput,
   ToolId,
   ToolReading,
   UpgradeId,
@@ -47,7 +55,15 @@ import {
   isPartCompatible,
   nearestCatalogJet,
 } from "../economy/catalog";
-import { predictPlugColor } from "../engine/engine-sim";
+import {
+  NEUTRAL_STAND_INPUT,
+  type StandTestState,
+  buildStandSnapshot,
+  createStandTest,
+  predictPlugColor,
+  refreshStandBike,
+  stepStandTest,
+} from "../engine/engine-sim";
 import {
   FAULT_DEFS,
   activeFaultIds,
@@ -57,7 +73,6 @@ import {
   applyPremixOil,
   forceFault,
   getJetDeviation,
-  hasUnresolvedFaults,
   injectRideFault,
   reconcileFaults,
 } from "../faults/catalog";
@@ -82,6 +97,24 @@ const STEP_SEC = 1 / 60;
 const HUD_NOTIFY_MS = 66; // ~15 Hz
 const MAX_STEPS_PER_FRAME = 8;
 const FULL_SEND_MPH = 42;
+/** Street Runner Rep only pays out for new personal-best distance bands. */
+const RUNNER_REP_BAND_M = 250;
+/** …or the very first run that makes it this far. */
+const RUNNER_FIRST_REP_M = 150;
+/** Long, hard Runner sessions can break things just like Tuning Rides. */
+const RUNNER_FAULT_MIN_M = 600;
+/** Air filter dirt per km if a sim result doesn't report it. */
+const AIR_FILTER_DIRT_PER_KM = 1.4;
+const AIR_FILTER_DUSTY = 25;
+
+const WEAR_KEYS: (keyof OwnedBike["wear"])[] = [
+  "plugFouling",
+  "pistonScore",
+  "clutchWear",
+  "fuelFilterClog",
+  "gasketWear",
+  "airFilterDirt",
+];
 const JET_RANGE = {
   min: CATALOG_JET_SIZES[0] ?? 56,
   max: CATALOG_JET_SIZES[CATALOG_JET_SIZES.length - 1] ?? 84,
@@ -128,7 +161,24 @@ export function getActiveBike(save: SimSaveState): OwnedBike {
 }
 
 function clampWear(v: number): number {
+  if (!Number.isFinite(v)) return 0;
   return Math.max(0, Math.min(100, Math.round(v * 10) / 10));
+}
+
+/**
+ * Add a ride/run wear delta to a bike. Tolerates missing keys on either side
+ * (older saves, sims that don't report air filter dirt) so wear can never
+ * become NaN → null → an invalid save.
+ */
+function applyWear(bike: OwnedBike, delta: Partial<OwnedBike["wear"]>, odometerDeltaM: number): void {
+  for (const key of WEAR_KEYS) {
+    let d = delta[key] ?? 0;
+    if (delta[key] === undefined && key === "airFilterDirt") {
+      d = (Math.max(0, odometerDeltaM) / 1000) * AIR_FILTER_DIRT_PER_KM;
+    }
+    const base = bike.wear[key] ?? 0;
+    bike.wear[key] = clampWear(base + (Number.isFinite(d) ? d : 0));
+  }
 }
 
 function isVariator(make: OwnedBike["make"]): boolean {
@@ -160,8 +210,17 @@ export function createBikeFromListing(listing: CraigslistListing): OwnedBike {
     },
     tuning: { mainJet: 60, needleClip: 3, idleScrew: 1.5, hasPremixOil: true, killSwitchOn: false },
     faults: [],
-    wear: { plugFouling: 18, pistonScore: 6, clutchWear: 22, fuelFilterClog: 20, gasketWear: 24 },
+    wear: {
+      plugFouling: 18,
+      pistonScore: 6,
+      clutchWear: 22,
+      fuelFilterClog: 20,
+      gasketWear: 24,
+      // A bike that sat in a dusty garage for years has a filthy filter.
+      airFilterDirt: listing.make === "tomos-a35" ? 58 : 24,
+    },
     lastPlugColor: "tan-ideal",
+    verdict: "untested",
     wrongSwapsStreak: 0,
   };
   // Jetting: start at the ideal for the hardware, then apply the seller's "tune".
@@ -195,6 +254,7 @@ interface UiState {
   lastToolReading: ToolReading | null;
   plugViewerColor: SimAppSnapshot["plugViewerColor"];
   lastActionNotice: SimAppSnapshot["lastActionNotice"];
+  runnerPlaying: boolean;
 }
 
 type Listener = () => void;
@@ -202,12 +262,19 @@ type EventListener = (ev: SimEvent) => void;
 
 let serverSnapshotCache: SimAppSnapshot | null = null;
 
-function buildSnapshot(ui: UiState, ride: RideTelemetrySnapshot | null): SimAppSnapshot {
+function buildSnapshot(
+  ui: UiState,
+  ride: RideTelemetrySnapshot | null,
+  standTest: RideTelemetrySnapshot | null,
+): SimAppSnapshot {
   const bike = getActiveBike(ui.save);
+  const bikeVerdict: BikeVerdict = bike.verdict ?? "untested";
   return {
     phase: ui.phase,
     save: ui.save,
     ride,
+    standTest,
+    runnerPlaying: ui.runnerPlaying,
     lastRideSummary: ui.lastRideSummary,
     lastRunnerSummary: ui.lastRunnerSummary,
     selectedTool: ui.selectedTool,
@@ -215,7 +282,9 @@ function buildSnapshot(ui: UiState, ride: RideTelemetrySnapshot | null): SimAppS
     plugViewerColor: ui.plugViewerColor,
     lastActionNotice: ui.lastActionNotice,
     garageFuelDrip: getJetDeviation(bike) >= 8,
-    bikeNeedsAttention: hasUnresolvedFaults(bike),
+    bikeVerdict,
+    // Road-tested only — never the hidden fault list.
+    bikeNeedsAttention: bikeVerdict === "acting-up",
     jetRange: JET_RANGE,
   };
 }
@@ -233,6 +302,13 @@ class SimStoreImpl {
   private pendingKick = false;
   private latestRide: RideTelemetrySnapshot | null = null;
   private hudRide: RideTelemetrySnapshot | null = null;
+
+  private standState: StandTestState | null = null;
+  private standInput: StandTestInput = { ...NEUTRAL_STAND_INPUT };
+  private pendingStandKick = false;
+  private latestStand: RideTelemetrySnapshot | null = null;
+  private hudStand: RideTelemetrySnapshot | null = null;
+  private standNonce = 0;
 
   private rafId: number | null = null;
   private lastFrameMs: number | null = null;
@@ -256,8 +332,9 @@ class SimStoreImpl {
       lastToolReading: null,
       plugViewerColor: null,
       lastActionNotice: null,
+      runnerPlaying: false,
     };
-    this.snapshot = buildSnapshot(this.ui, null);
+    this.snapshot = buildSnapshot(this.ui, null, null);
   }
 
   // ── init / subscription ──
@@ -268,7 +345,7 @@ class SimStoreImpl {
     const save = loadSave();
     for (const bike of save.bikes) reconcileFaults(bike, 0);
     this.ui = { ...this.ui, save };
-    this.snapshot = buildSnapshot(this.ui, this.hudRide);
+    this.snapshot = buildSnapshot(this.ui, this.hudRide, this.hudStand);
   }
 
   getSnapshot = (): SimAppSnapshot => {
@@ -287,7 +364,9 @@ class SimStoreImpl {
         lastToolReading: null,
         plugViewerColor: null,
         lastActionNotice: null,
+        runnerPlaying: false,
       },
+      null,
       null,
     );
     return serverSnapshotCache;
@@ -295,6 +374,9 @@ class SimStoreImpl {
 
   /** Latest 60 Hz ride telemetry for Canvas 2D & Web Audio (not throttled). */
   getLatestRideSnapshot = (): RideTelemetrySnapshot | null => this.latestRide;
+
+  /** Latest 60 Hz stand-test telemetry for PulseSynth & the workbench SVG (not throttled). */
+  getLatestStandSnapshot = (): RideTelemetrySnapshot | null => this.latestStand;
 
   subscribe = (listener: Listener): (() => void) => {
     this.listeners.add(listener);
@@ -323,7 +405,8 @@ class SimStoreImpl {
   /** Replace the cached snapshot & notify React. */
   private commit(opts: { persist?: boolean } = {}): void {
     this.hudRide = this.latestRide;
-    this.snapshot = buildSnapshot(this.ui, this.hudRide);
+    this.hudStand = this.latestStand;
+    this.snapshot = buildSnapshot(this.ui, this.hudRide, this.hudStand);
     this.lastNotifyMs = this.simClockMs;
     if (opts.persist) persistSave(this.ui.save);
     for (const l of this.listeners) l();
@@ -367,6 +450,10 @@ class SimStoreImpl {
     if (this.rideState?.bike.id === bike.id && !this.rideState.finished) {
       refreshRideBike(this.rideState, structuredClone(bike));
     }
+    // Wrenching while it idles on the stand: the running engine feels it at once.
+    if (this.standState?.bike.id === bike.id) {
+      refreshStandBike(this.standState, structuredClone(bike));
+    }
   }
 
   /** Record faults that disappeared due to a player action. */
@@ -393,6 +480,8 @@ class SimStoreImpl {
     const bike = structuredClone(getActiveBike(this.ui.save));
     const before = activeFaultIds(bike);
     mutate(bike);
+    // Any wrenching means the old road-test verdict no longer applies.
+    bike.verdict = "untested";
     reconcileFaults(bike, Date.now());
     const after = activeFaultIds(bike);
     const fixed = before.filter((id) => !after.includes(id));
@@ -414,9 +503,23 @@ class SimStoreImpl {
   // ── RIDE LOOP ──
 
   /** The sim keeps running at the roadside too (kick it, pedal home, cool down). */
-  private shouldRun(): boolean {
+  private rideShouldRun(): boolean {
     const onRoad = this.ui.phase === "RIDE" || this.ui.phase === "ROADSIDE";
     return onRoad && !!this.rideState && !this.rideState.finished;
+  }
+
+  private standShouldRun(): boolean {
+    return !!this.standState && this.ui.phase === "GARAGE";
+  }
+
+  private shouldRun(): boolean {
+    return this.rideShouldRun() || this.standShouldRun();
+  }
+
+  /** Start or stop the rAF loop to match what currently needs simulating. */
+  private syncLoop(): void {
+    if (this.shouldRun()) this.ensureLoop();
+    else this.stopLoop();
   }
 
   private ensureLoop(): void {
@@ -440,7 +543,8 @@ class SimStoreImpl {
     if (!this.shouldRun()) return;
     const dtMs = this.lastFrameMs === null ? 1000 / 60 : Math.min(100, Math.max(0, now - this.lastFrameMs));
     this.lastFrameMs = now;
-    this.advanceRide(dtMs);
+    if (this.rideShouldRun()) this.advanceRide(dtMs);
+    else this.advanceStand(dtMs);
     if (this.shouldRun()) this.rafId = window.requestAnimationFrame(this.frame);
   };
 
@@ -464,6 +568,52 @@ class SimStoreImpl {
     if (!this.rideState || this.rideState.finished) return;
     if (urgent || this.simClockMs - this.lastNotifyMs >= HUD_NOTIFY_MS) this.commit();
   };
+
+  /**
+   * Advance the garage stand test by `dtMs` using fixed 60 Hz steps. Public so
+   * headless tests can drive it without rAF (feed ≤ 8 steps per call).
+   */
+  advanceStand = (dtMs: number): void => {
+    if (!this.standState) return;
+    this.accumulator += dtMs / 1000;
+    let steps = 0;
+    let urgent = false;
+    while (this.accumulator >= STEP_SEC && steps < MAX_STEPS_PER_FRAME) {
+      this.accumulator -= STEP_SEC;
+      steps++;
+      this.simClockMs += STEP_SEC * 1000;
+      if (this.stepStandOnce()) urgent = true;
+      if (!this.standState) break;
+    }
+    if (steps >= MAX_STEPS_PER_FRAME) this.accumulator = 0;
+    if (!this.standState) return;
+    if (urgent || this.simClockMs - this.lastNotifyMs >= HUD_NOTIFY_MS) this.commit();
+  };
+
+  private stepStandOnce(): boolean {
+    const stand = this.standState;
+    if (!stand) return false;
+    const input: StandTestInput = { ...this.standInput, kickstartPulse: this.pendingStandKick };
+    this.pendingStandKick = false;
+    const events = stepStandTest(stand, input, STEP_SEC);
+    this.latestStand = buildStandSnapshot(stand);
+    let urgent = false;
+    // Stand events are sound/visual cues only — no badges, stats, or plug reads
+    // (the clutch is always out of the loop on the stand, and there's no load).
+    for (const ev of events) {
+      this.emitEvent(ev);
+      if (ev.type !== "caption") urgent = true;
+    }
+    return urgent;
+  }
+
+  /** Tear down the stand test without committing (callers commit). */
+  private haltStand(): void {
+    this.standState = null;
+    this.latestStand = null;
+    this.standInput = { ...NEUTRAL_STAND_INPUT };
+    this.pendingStandKick = false;
+  }
 
   /** One fixed 60 Hz step. Returns true if the HUD should update immediately. */
   private stepOnce(): boolean {
@@ -527,10 +677,20 @@ class SimStoreImpl {
     if (current) {
       const bike = structuredClone(current);
       bike.odometerM += result.odometerDeltaM;
-      for (const key of Object.keys(bike.wear) as (keyof OwnedBike["wear"])[]) {
-        bike.wear[key] = clampWear(bike.wear[key] + result.wearDelta[key]);
-      }
+      applyWear(bike, result.wearDelta, result.odometerDeltaM);
       if (result.plugColor) bike.lastPlugColor = result.plugColor;
+      // Road-tested verdict: only what the rider actually saw, heard and felt.
+      if (outcome !== "aborted") {
+        const eng = ride.engine;
+        const actingUp =
+          outcome !== "finished" ||
+          !ride.everStarted ||
+          ride.notes.length > 0 ||
+          eng.detonations > 0 ||
+          eng.seizesSaved > 0 ||
+          eng.seizeCrashes > 0;
+        bike.verdict = actingUp ? "acting-up" : "ran-clean";
+      }
       reconcileFaults(bike, Date.now());
       if (outcome === "finished") {
         const rng = mulberry32((save.seed + save.stats.totalRides * 7919 + 17) >>> 0);
@@ -557,6 +717,17 @@ class SimStoreImpl {
       outcome === "finished" && !this.ui.save.completedRoutes.includes(summary.routeId)
         ? [...this.ui.save.completedRoutes, summary.routeId]
         : this.ui.save.completedRoutes;
+
+    // Route medals: merge what this ride earned, remember which ones are new.
+    const prevMedals: RouteMedal[] = this.ui.save.routeMedals?.[summary.routeId] ?? [];
+    const earnedMedals = [...new Set(summary.medalsEarned ?? [])];
+    const newMedals = earnedMedals.filter((m) => !prevMedals.includes(m));
+    const routeMedals =
+      newMedals.length > 0
+        ? { ...(this.ui.save.routeMedals ?? {}), [summary.routeId]: [...prevMedals, ...newMedals] }
+        : (this.ui.save.routeMedals ?? {});
+    const finalSummary: RideSummary = { ...summary, newMedals };
+
     this.ui = {
       ...this.ui,
       save: {
@@ -564,6 +735,7 @@ class SimStoreImpl {
         cash: Math.max(0, this.ui.save.cash + summary.cashEarned - summary.towCost),
         rep: this.ui.save.rep + summary.repEarned,
         completedRoutes,
+        routeMedals,
         stats,
       },
     };
@@ -585,7 +757,7 @@ class SimStoreImpl {
 
     this.ui = {
       ...this.ui,
-      lastRideSummary: opts.showSummary === false ? null : summary,
+      lastRideSummary: opts.showSummary === false ? null : finalSummary,
     };
     this.commit({ persist: true });
   }
@@ -606,15 +778,17 @@ class SimStoreImpl {
       this.rideState = null;
       this.latestRide = null;
     }
-    this.patchUi({ phase });
-    if (phase === "RIDE" || phase === "ROADSIDE") this.ensureLoop();
-    else this.stopLoop();
+    // The stand test lives on the garage floor only.
+    if (phase !== "GARAGE") this.haltStand();
+    this.patchUi({ phase, runnerPlaying: phase === "RUNNER" ? this.ui.runnerPlaying : false });
+    this.syncLoop();
   };
 
   selectBike = (bikeId: string): void => {
     this.ensureInit();
     if (!this.ui.save.bikes.some((b) => b.id === bikeId)) return;
     if (this.rideState && !this.rideState.finished) return;
+    if (bikeId !== this.ui.save.activeBikeId) this.haltStand();
     this.patchUi(
       {
         save: { ...this.ui.save, activeBikeId: bikeId },
@@ -623,6 +797,7 @@ class SimStoreImpl {
       },
       { persist: true },
     );
+    this.syncLoop();
   };
 
   selectTool = (tool: ToolId): void => {
@@ -694,7 +869,7 @@ class SimStoreImpl {
 
     const oldId = active.parts[slot];
     const oldCylinderWorn = slot === "cylinder" && active.wear.pistonScore >= 30;
-    const { fixed } = this.garageChange(
+    this.garageChange(
       (bike) => {
         if (slot === "belt") bike.parts.belt = partId;
         else bike.parts[slot] = partId;
@@ -710,11 +885,11 @@ class SimStoreImpl {
     if (oldId && !sameId && !consumable && !oldCylinderWorn && getPartById(oldId)) inventory.push(oldId);
     this.ui = { ...this.ui, save: { ...this.ui.save, inventory } };
 
-    if (fixed.length > 0) {
-      this.notice(`Installed ${part.name}. Something feels different — take it for a test ride!`, "green");
-    } else {
-      this.notice(`Installed ${part.name}.`, "gold");
-    }
+    // Neutral on purpose: the wrench never tells you whether you fixed it.
+    this.notice(
+      `Installed ${part.name}. Fire it up on the stand or take a test ride to feel the difference.`,
+      "gold",
+    );
     this.commit({ persist: true });
     return true;
   };
@@ -761,20 +936,17 @@ class SimStoreImpl {
       this.playerFlippedKillSwitch.add(active.id);
     }
     const selfInflicted = wasOn && this.playerFlippedKillSwitch.delete(active.id);
-    const { fixed } = this.garageChange(
+    this.garageChange(
       (bike) => {
         bike.tuning.killSwitchOn = !wasOn;
         return wasOn ? applyKillSwitchOff(bike) : [];
       },
       { skipFixRecord: selfInflicted },
     );
+    // Neutral either way — whether the spark is truly back is for the kickstart to tell.
     this.notice(
-      wasOn
-        ? fixed.length > 0 && !selfInflicted
-          ? "Kill switch flipped to RUN — worked the contacts clean while you were at it."
-          : "Kill switch flipped to RUN."
-        : "Kill switch flipped to OFF. It won't fire like this.",
-      wasOn ? "green" : "cyan",
+      wasOn ? "Kill switch flipped to RUN." : "Kill switch flipped to OFF. It won't fire like this.",
+      "cyan",
     );
     this.commit({ persist: true });
   };
@@ -792,19 +964,27 @@ class SimStoreImpl {
 
   cleanAirFilter = (): void => {
     this.ensureInit();
-    this.garageChange(() => undefined);
-    this.notice("Tapped out the air filter and blew it clean. Not much in there.", "gold");
+    if (this.rideBlocksWrenching()) return;
+    const dirt = getActiveBike(this.ui.save).wear.airFilterDirt ?? 0;
+    this.garageChange((bike) => {
+      bike.wear.airFilterDirt = 0;
+    });
+    // Air filter dirt is plain maintenance (not a hidden fault) — honest feedback.
+    if (dirt >= AIR_FILTER_DUSTY) {
+      this.notice("Knocked a cloud of East Bay dust out of the air filter — breathes easier now.", "green");
+    } else {
+      this.notice("Tapped out the air filter — already pretty clean.", "gold");
+    }
     this.commit({ persist: true });
   };
 
   cleanCarburetor = (): void => {
     if (this.rideBlocksWrenching()) return;
-    const { fixed } = this.garageChange((bike) => applyCarbClean(bike));
+    this.garageChange((bike) => applyCarbClean(bike));
+    // Neutral on purpose — the road (or the stand) is the judge.
     this.notice(
-      fixed.length > 0
-        ? "Pulled the carb, blew out the jets and fuel passages — a pile of varnish came out."
-        : "Pulled the carb and cleaned it. It was already pretty clean.",
-      fixed.length > 0 ? "green" : "gold",
+      "Pulled the carb, blew out the jets and fuel passages, and bolted it back on. Fire it up to see how it runs.",
+      "gold",
     );
     this.commit({ persist: true });
   };
@@ -883,6 +1063,7 @@ class SimStoreImpl {
       return false;
     }
     const bike = createBikeFromListing(listing);
+    this.haltStand();
     this.ui = {
       ...this.ui,
       save: {
@@ -897,6 +1078,7 @@ class SimStoreImpl {
     this.journal(bike.id, `Bought: ${listing.title}`, `Seller said: "${listing.sellerBlurb}"`, "observation");
     this.notice(`Bought the ${bike.nickname} for $${listing.price}! Time to find out what's wrong with it.`, "green");
     this.commit({ persist: true });
+    this.syncLoop();
     return true;
   };
 
@@ -911,6 +1093,7 @@ class SimStoreImpl {
       return;
     }
     if (this.rideState && !this.rideState.finished) this.completeRide("aborted", { showSummary: false });
+    this.haltStand();
     const bike = structuredClone(getActiveBike(save));
     this.rideState = createRideState(bike, route, {
       hasTach: save.upgrades.includes("gauge-tach"),
@@ -996,40 +1179,135 @@ class SimStoreImpl {
     if (ride && !ride.finished) this.completeRide("aborted", { showSummary: false });
     this.rideState = null;
     this.latestRide = null;
-    this.stopLoop();
     this.patchUi({ phase: "GARAGE" });
+    this.syncLoop();
   };
 
   dismissRideSummary = (): void => {
-    this.stopLoop();
     if (this.rideState?.finished) {
       this.rideState = null;
       this.latestRide = null;
     }
     const phase = this.ui.phase === "RIDE" || this.ui.phase === "ROADSIDE" ? "GARAGE" : this.ui.phase;
     this.patchUi({ lastRideSummary: null, phase });
+    this.syncLoop();
+  };
+
+  // ── STAND TEST ──
+
+  startStandTest = (): void => {
+    this.ensureInit();
+    if (this.standState) return;
+    if (this.ui.phase !== "GARAGE") return;
+    if (this.rideState && !this.rideState.finished) return;
+    const save = this.ui.save;
+    const bike = structuredClone(getActiveBike(save));
+    this.standState = createStandTest(bike, {
+      hasTach: save.upgrades.includes("gauge-tach"),
+      hasChtGauge: save.upgrades.includes("gauge-cht"),
+      hasStethoscope: save.upgrades.includes("tool-stethoscope"),
+      seed: (save.seed ^ Math.imul(++this.standNonce, 2246822519) ^ 0x57a4d) >>> 0,
+    });
+    this.standInput = { ...NEUTRAL_STAND_INPUT };
+    this.pendingStandKick = false;
+    this.accumulator = 0;
+    this.latestStand = buildStandSnapshot(this.standState);
+    this.commit();
+    this.syncLoop();
+  };
+
+  stopStandTest = (): void => {
+    if (!this.standState) return;
+    this.haltStand();
+    this.commit();
+    this.syncLoop();
+  };
+
+  setStandInput = (partial: Partial<StandTestInput>): void => {
+    const { kickstartPulse, ...held } = partial;
+    const prev = this.standInput;
+    this.standInput = { ...prev, ...held };
+    if (kickstartPulse) this.pendingStandKick = true;
+    const toggled =
+      (held.choke !== undefined && held.choke !== prev.choke) ||
+      (held.killSwitch !== undefined && held.killSwitch !== prev.killSwitch);
+    if (toggled && this.standState) {
+      this.standState.input = { ...this.standInput, kickstartPulse: false };
+      this.latestStand = buildStandSnapshot(this.standState);
+      this.commit();
+    }
+  };
+
+  kickStandTest = (): void => {
+    if (!this.standState) this.startStandTest();
+    if (!this.standState) return;
+    this.pendingStandKick = true;
+    this.syncLoop();
+  };
+
+  setRunnerPlaying = (playing: boolean): void => {
+    this.ensureInit();
+    const next = playing && this.ui.phase === "RUNNER";
+    if (next === this.ui.runnerPlaying) return;
+    this.patchUi({ runnerPlaying: next });
   };
 
   completeRunnerRun = (result: RunnerRunResult): void => {
     this.ensureInit();
-    const { summary } = result;
+    // The run is over no matter what happens below.
+    this.ui = { ...this.ui, runnerPlaying: false };
+    const { summary: rawSummary } = result;
     const save = this.ui.save;
-    const current = save.bikes.find((b) => b.id === summary.bikeId) ?? getActiveBike(save);
-    if (current) {
-      const bike = structuredClone(current);
-      bike.odometerM += result.odometerDeltaM;
-      for (const key of Object.keys(bike.wear) as (keyof OwnedBike["wear"])[]) {
-        bike.wear[key] = clampWear(bike.wear[key] + result.wearDelta[key]);
-      }
-      if (result.plugColor) bike.lastPlugColor = result.plugColor;
-      reconcileFaults(bike, Date.now());
-      this.replaceBike(bike);
+    // B13: the bike may be gone (e.g. save reset mid-run) — never bill another bike.
+    const current = save.bikes.find((b) => b.id === rawSummary.bikeId);
+    if (!current) {
+      this.commit();
+      return;
     }
 
-    const breakdown = summary.endReason === "seized" || summary.endReason === "stalled";
+    const counted = rawSummary.distanceM > 30;
+    const breakdown = rawSummary.endReason === "seized" || rawSummary.endReason === "stalled";
+    const nextTotalRides = save.stats.totalRides + (counted ? 1 : 0);
+
+    // G5: Runner Rep only for new personal-best distance bands (or the first real run).
+    const prevBest = save.runnerBestDistanceM ?? 0;
+    const dist = rawSummary.distanceM;
+    const isNewBestDistance = dist > prevBest && dist > 0;
+    const bandsCrossed = Math.max(0, Math.floor(dist / RUNNER_REP_BAND_M) - Math.floor(prevBest / RUNNER_REP_BAND_M));
+    const firstMilestone = prevBest < RUNNER_FIRST_REP_M && dist >= RUNNER_FIRST_REP_M;
+    const repEarned = bandsCrossed > 0 || firstMilestone ? Math.max(0, rawSummary.repEarned) : 0;
+    const summary: RunnerRunSummary = { ...rawSummary, repEarned, isNewBestDistance };
+
+    const bike = structuredClone(current);
+    bike.odometerM += result.odometerDeltaM;
+    applyWear(bike, result.wearDelta, result.odometerDeltaM);
+    if (result.plugColor) bike.lastPlugColor = result.plugColor;
+    // Road-tested verdict from the run (traffic wipeouts aren't the engine's fault).
+    if (counted || breakdown) {
+      const symptomNotes = summary.notes.filter((n) => !/ran clean/i.test(n));
+      const ranClean =
+        summary.cleanTuneBonus !== undefined && summary.distanceM >= 150
+          ? summary.cleanTuneBonus
+          : symptomNotes.length === 0;
+      const actingUp = breakdown || result.seizesSaved > 0 || !ranClean;
+      bike.verdict = actingUp ? "acting-up" : "ran-clean";
+    }
+    reconcileFaults(bike, Date.now());
+    // Long, hard Runner sessions wear things out just like Tuning Rides.
+    if (summary.distanceM > RUNNER_FAULT_MIN_M && result.pushedHard) {
+      const rng = mulberry32((save.seed + nextTotalRides * 7919 + summary.distanceM * 31 + 53) >>> 0);
+      injectRideFault(
+        bike,
+        rng,
+        { totalRides: nextTotalRides, pushedHard: true, hotSeconds: result.hotSeconds },
+        Date.now(),
+      );
+    }
+    this.replaceBike(bike);
+
     const stats = {
       ...this.ui.save.stats,
-      totalRides: this.ui.save.stats.totalRides + (summary.distanceM > 30 ? 1 : 0),
+      totalRides: nextTotalRides,
       totalBreakdowns: this.ui.save.stats.totalBreakdowns + (breakdown ? 1 : 0),
       seizesSaved: this.ui.save.stats.seizesSaved + result.seizesSaved,
     };
@@ -1040,13 +1318,15 @@ class SimStoreImpl {
         ...this.ui.save,
         cash: Math.max(0, this.ui.save.cash + summary.cashEarned),
         rep: this.ui.save.rep + summary.repEarned,
+        runnerBestDistanceM: Math.max(prevBest, dist),
         stats,
       },
       lastRunnerSummary: summary,
     };
 
     if (result.seizesSaved > 0) this.awardBadge("clutch-hero");
-    if (summary.topSpeedMph >= FULL_SEND_MPH) this.awardBadge("full-send");
+    // B2: Treatland turbo boosts don't count toward Full Send.
+    if ((summary.engineTopSpeedMph ?? summary.topSpeedMph) >= FULL_SEND_MPH) this.awardBadge("full-send");
 
     if (summary.distanceM > 20 || breakdown) {
       const reasonLabel: Record<RunnerRunSummary["endReason"], string> = {
@@ -1074,6 +1354,7 @@ class SimStoreImpl {
     clearSave();
     this.rideState = null;
     this.latestRide = null;
+    this.haltStand();
     this.initialized = true;
     this.patchUi(
       {
@@ -1085,6 +1366,7 @@ class SimStoreImpl {
         lastToolReading: null,
         plugViewerColor: null,
         lastActionNotice: { text: "Fresh start. Another Craigslist Maxi that 'ran when parked'.", tone: "cyan" },
+        runnerPlaying: false,
       },
       { persist: true },
     );
@@ -1113,6 +1395,10 @@ class SimStoreImpl {
     cleanAirFilter: this.cleanAirFilter,
     cleanCarburetor: this.cleanCarburetor,
     clearFaultlessTestCheck: this.clearFaultlessTestCheck,
+    startStandTest: this.startStandTest,
+    stopStandTest: this.stopStandTest,
+    setStandInput: this.setStandInput,
+    kickStandTest: this.kickStandTest,
     buyPart: this.buyPart,
     buyUpgrade: this.buyUpgrade,
     buyCraigslistBike: this.buyCraigslistBike,
@@ -1125,6 +1411,7 @@ class SimStoreImpl {
     callTowTruck: this.callTowTruck,
     abortRideToGarage: this.abortRideToGarage,
     dismissRideSummary: this.dismissRideSummary,
+    setRunnerPlaying: this.setRunnerPlaying,
     completeRunnerRun: this.completeRunnerRun,
     dismissRunnerSummary: this.dismissRunnerSummary,
     resetSave: this.resetSave,

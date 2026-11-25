@@ -152,6 +152,7 @@ export class RideRenderer {
   private particles: SmokeParticle[] = [];
   private particleCursor = 0;
   private smokeAccum = 0;
+  private smokeStepCount = 0;
   private wheelAngle = 0;
   private rearWheelAngle = 0;
   private pedalAngle = 0;
@@ -160,9 +161,18 @@ export class RideRenderer {
   private elapsedRenderSec = 0;
   private lastSeizeActive = false;
 
+  private prevThrottle = 0;
+  private backfireTimerSec = 0;
+  private detonationFlashSec = 0;
+
+  private fontBangers = 'Impact, "Arial Black", sans-serif';
+  private fontRusso = '"Arial Black", sans-serif';
+  private fontsResolved = false;
+
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d");
+    this.resolveFonts();
 
     for (let i = 0; i < MAX_PARTICLES; i++) {
       this.particles.push({
@@ -182,6 +192,14 @@ export class RideRenderer {
     this.resize();
   }
 
+  private getPxPerMeter(): number {
+    return Math.max(11.5, Math.min(22, this.width / 30));
+  }
+
+  private getBikeScale(): number {
+    return this.width < 520 ? Math.max(0.78, this.width / 540) : 1;
+  }
+
   resize(width?: number, height?: number): void {
     if (typeof window === "undefined") return;
     const rect =
@@ -193,7 +211,7 @@ export class RideRenderer {
       Math.floor(rect.width || this.canvas.clientWidth || 960),
     );
     const h = Math.max(
-      240,
+      160,
       Math.floor(rect.height || this.canvas.clientHeight || 460),
     );
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -216,8 +234,39 @@ export class RideRenderer {
     const ctx = this.ctx;
     if (!ctx) return;
 
+    if (!this.fontsResolved) {
+      this.resolveFonts();
+    }
+
     const dt = Math.min(0.05, Math.max(0.001, dtSec));
     this.elapsedRenderSec += dt;
+
+    // V6: Detonation cylinder flash & stinger backfire pop timers
+    if (snapshot.detonationPulse) {
+      this.detonationFlashSec = 0.14;
+    } else {
+      this.detonationFlashSec = Math.max(0, this.detonationFlashSec - dt);
+    }
+
+    const throttleChop =
+      this.prevThrottle > 0.6 &&
+      snapshot.throttle < 0.15 &&
+      snapshot.rpm > 3500 &&
+      snapshot.engineRunning &&
+      !snapshot.stalled;
+    const highMisfirePop =
+      snapshot.engineRunning &&
+      !snapshot.stalled &&
+      snapshot.misfirePattern !== "none" &&
+      snapshot.misfireRate > 0.35 &&
+      snapshot.rpm > 2400 &&
+      Math.random() < dt * 3.5;
+    if (throttleChop || highMisfirePop) {
+      this.backfireTimerSec = 0.085;
+    } else {
+      this.backfireTimerSec = Math.max(0, this.backfireTimerSec - dt);
+    }
+    this.prevThrottle = snapshot.throttle;
 
     const targetLayerDpr = Math.min(this.dpr, 2);
     if (
@@ -253,7 +302,8 @@ export class RideRenderer {
     const w = this.width;
     const h = this.height;
     const roadY = Math.round(h * 0.72);
-    const bikeX = Math.round(w * (w < 640 ? 0.28 : 0.32));
+    const bikeX = Math.round(w * (w < 560 ? 0.22 : w < 640 ? 0.28 : 0.32));
+    const bikeScale = this.getBikeScale();
 
     ctx.save();
     ctx.scale(this.dpr, this.dpr);
@@ -300,6 +350,12 @@ export class RideRenderer {
       ctx.fillRect(-24, skirtTop, w + 48, h + 40 - skirtTop);
     }
 
+    // V5: Caldecott Tunnel atmospheric vault ceiling/wall overlay
+    const inCaldecottTunnel = this.isCaldecottTunnelActive(snapshot);
+    if (inCaldecottTunnel) {
+      this.drawCaldecottTunnelOverlay(ctx, w, h, roadY, snapshot.distanceM);
+    }
+
     // 3. Dynamic Road Grade World (tilted around moped ground contact)
     const gradeRad = -Math.max(-10, Math.min(15, this.smoothGrade)) * 0.011;
 
@@ -314,8 +370,8 @@ export class RideRenderer {
         : 0;
 
     const exhaustTip = this.getExhaustTipOffset(snapshot.exhaustVisual);
-    const localTipX = exhaustTip.x;
-    const localTipY = exhaustTip.y + bounce;
+    const localTipX = exhaustTip.x * bikeScale;
+    const localTipY = (exhaustTip.y + bounce) * bikeScale;
     const cosG = Math.cos(gradeRad);
     const sinG = Math.sin(gradeRad);
     const worldTipX = bikeX + shakeX + localTipX * cosG - localTipY * sinG;
@@ -354,6 +410,9 @@ export class RideRenderer {
     ctx.save();
     ctx.translate(bikeX + shakeX, roadY + shakeY);
     ctx.rotate(gradeRad);
+    if (bikeScale !== 1) {
+      ctx.scale(bikeScale, bikeScale);
+    }
 
     this.drawMopedAndRider(
       ctx,
@@ -389,6 +448,130 @@ export class RideRenderer {
     this.midLayer = null;
     this.nearLayer = null;
     this.ctx = null;
+  }
+
+  private resolveFonts(): void {
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+    const rootStyle = getComputedStyle(document.documentElement);
+    const canvasStyle = getComputedStyle(this.canvas);
+    const bangers =
+      canvasStyle.getPropertyValue("--font-bangers").trim() ||
+      rootStyle.getPropertyValue("--font-bangers").trim();
+    const russo =
+      canvasStyle.getPropertyValue("--font-russo-one").trim() ||
+      rootStyle.getPropertyValue("--font-russo-one").trim();
+
+    if (bangers) {
+      this.fontBangers = `${bangers}, Impact, "Arial Black", sans-serif`;
+    }
+    if (russo) {
+      this.fontRusso = `${russo}, "Arial Black", sans-serif`;
+    }
+    this.fontsResolved = Boolean(bangers || russo);
+  }
+
+  private isCaldecottTunnelActive(snapshot: RideTelemetrySnapshot): boolean {
+    if (snapshot.routeId !== "midnight-tunnel" || !snapshot.landmark) {
+      return false;
+    }
+    const lm = snapshot.landmark.toLowerCase();
+    return (
+      lm.includes("caldecott") ||
+      lm.includes("bore") ||
+      (lm.includes("tunnel") && !lm.includes("approach"))
+    );
+  }
+
+  private drawCaldecottTunnelOverlay(
+    ctx: CanvasRenderingContext2D,
+    w: number,
+    h: number,
+    roadY: number,
+    distanceM: number,
+  ): void {
+    const pxPerMeter = this.getPxPerMeter();
+    const ceilingBottom = Math.max(46, Math.round(h * 0.22));
+    const wallBottom = roadY - 24;
+
+    ctx.save();
+
+    // Atmospheric dark concrete tunnel wall behind road & sidewalk
+    const wallGrad = ctx.createLinearGradient(0, ceilingBottom, 0, wallBottom);
+    wallGrad.addColorStop(0, "rgba(9, 9, 11, 0.94)");
+    wallGrad.addColorStop(1, "rgba(24, 24, 27, 0.88)");
+    ctx.fillStyle = wallGrad;
+    ctx.fillRect(0, ceilingBottom, w, Math.max(0, wallBottom - ceilingBottom));
+
+    // Scrolling concrete tunnel wall ribs & tile band
+    const ribSpacing = 120;
+    const ribOffset = (distanceM * pxPerMeter) % ribSpacing;
+    ctx.fillStyle = "rgba(39, 39, 42, 0.72)";
+    for (let x = -ribOffset; x < w + ribSpacing; x += ribSpacing) {
+      ctx.fillRect(x, ceilingBottom, 12, Math.max(0, wallBottom - ceilingBottom));
+      ctx.strokeStyle = "#09090B";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x, ceilingBottom, 12, Math.max(0, wallBottom - ceilingBottom));
+    }
+
+    // Lower tile wainscot strip along tunnel wall
+    const tileH = 38;
+    if (wallBottom - tileH > ceilingBottom) {
+      ctx.fillStyle = "#27272A";
+      ctx.fillRect(0, wallBottom - tileH, w, tileH);
+      ctx.strokeStyle = "#09090B";
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(0, wallBottom - tileH);
+      ctx.lineTo(w, wallBottom - tileH);
+      ctx.stroke();
+    }
+
+    // Dark vaulted concrete ceiling canopy
+    ctx.fillStyle = "#09090B";
+    ctx.fillRect(0, 0, w, ceilingBottom);
+    ctx.fillStyle = "#18181B";
+    ctx.fillRect(0, ceilingBottom - 10, w, 10);
+    ctx.strokeStyle = "#F59E0B";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, ceilingBottom);
+    ctx.lineTo(w, ceilingBottom);
+    ctx.stroke();
+
+    // Strobing warm orange sodium overhead ceiling fixtures scrolling overhead
+    const lampSpacing = 175;
+    const lampOffset = (distanceM * pxPerMeter) % lampSpacing;
+    for (let i = -1; i * lampSpacing < w + lampSpacing; i++) {
+      const lx = i * lampSpacing - lampOffset;
+      const strobe =
+        0.74 + 0.26 * Math.sin(this.elapsedRenderSec * 14 + (lx + distanceM) * 0.04);
+
+      // Overhead sodium light cone
+      const cone = ctx.createLinearGradient(lx, ceilingBottom, lx, wallBottom);
+      cone.addColorStop(0, `rgba(251, 146, 60, ${0.34 * strobe})`);
+      cone.addColorStop(0.55, `rgba(245, 158, 11, ${0.12 * strobe})`);
+      cone.addColorStop(1, "rgba(245, 158, 11, 0)");
+      ctx.fillStyle = cone;
+      ctx.beginPath();
+      ctx.moveTo(lx - 18, ceilingBottom);
+      ctx.lineTo(lx + 18, ceilingBottom);
+      ctx.lineTo(lx + 72, wallBottom);
+      ctx.lineTo(lx - 72, wallBottom);
+      ctx.closePath();
+      ctx.fill();
+
+      // Fixture housing & warm bulb bar
+      ctx.fillStyle = "#27272A";
+      ctx.strokeStyle = "#09090B";
+      ctx.lineWidth = 2;
+      ctx.fillRect(lx - 18, ceilingBottom - 11, 36, 10);
+      ctx.strokeRect(lx - 18, ceilingBottom - 11, 36, 10);
+
+      ctx.fillStyle = `rgba(253, 186, 116, ${0.82 + 0.18 * strobe})`;
+      ctx.fillRect(lx - 13, ceilingBottom - 5, 26, 5);
+    }
+
+    ctx.restore();
   }
 
   private drawSky(
@@ -644,10 +827,10 @@ export class RideRenderer {
       mctx.fillRect(fx + 14, LAYER_HEIGHT - 125, 152, 34);
       mctx.strokeRect(fx + 14, LAYER_HEIGHT - 125, 152, 34);
       mctx.fillStyle = "#09090B";
-      mctx.font = "900 22px Impact, sans-serif";
+      mctx.font = `900 22px ${this.fontBangers}`;
       mctx.textAlign = "center";
       mctx.fillText("FOX", fx + 90, LAYER_HEIGHT - 218);
-      mctx.font = "900 14px sans-serif";
+      mctx.font = `900 14px ${this.fontRusso}`;
       mctx.fillText("OAKLAND", fx + 90, LAYER_HEIGHT - 103);
     }
     this.midLayer = mid;
@@ -681,7 +864,7 @@ export class RideRenderer {
         nctx.strokeRect(s.x + 18, LAYER_HEIGHT - 50, s.w - 36, 44);
         // Sign text
         nctx.fillStyle = "#09090B";
-        nctx.font = "900 12px sans-serif";
+        nctx.font = `900 12px ${this.fontRusso}`;
         nctx.textAlign = "center";
         nctx.fillText(s.label, s.x + s.w / 2, LAYER_HEIGHT - 60);
       }
@@ -816,7 +999,7 @@ export class RideRenderer {
     ctx.fillRect(left, 0, roadSpan, h + Math.ceil(w * 0.25));
 
     // Scrolling dashed yellow road markings
-    const pxPerMeter = 22;
+    const pxPerMeter = this.getPxPerMeter();
     const roadScroll = (snapshot.distanceM * pxPerMeter) % 140;
     ctx.fillStyle = palette.roadStripe;
     for (let x = left - roadScroll; x < right; x += 140) {
@@ -839,60 +1022,197 @@ export class RideRenderer {
       ctx.fillRect(mx - 24, -84, 48, 22);
       ctx.strokeRect(mx - 24, -84, 48, 22);
       ctx.fillStyle = "#09090B";
-      ctx.font = "900 10px sans-serif";
+      ctx.font = `900 11px ${this.fontRusso}`;
       ctx.textAlign = "center";
       const miles = (m / 1609.34).toFixed(1);
       ctx.fillText(`${miles}MI`, mx, -69);
     }
 
-    // Subtle scrolling pavement patches / potholes
-    const patchSpacing = 260;
-    const patchOffset = (snapshot.distanceM * pxPerMeter) % patchSpacing;
-    ctx.fillStyle = "#09090B";
-    for (let x = left - patchOffset; x < right; x += patchSpacing) {
-      ctx.beginPath();
-      ctx.ellipse(x + 80, 18, 16, 4, 0, 0, Math.PI * 2);
-      ctx.fill();
+    // V5: Roadside comic landmark signs (Fox Theater & Grizzly Peak Overlook)
+    this.drawLandmarkSignage(ctx, left, right, pxPerMeter, snapshot);
+
+    // V5: Real potholes on asphalt when provided; fallback to decorative patches only if absent
+    if (snapshot.upcomingPotholesM !== undefined) {
+      for (const pm of snapshot.upcomingPotholesM) {
+        const px = (pm - snapshot.distanceM) * pxPerMeter;
+        if (px < left || px > right) continue;
+        this.drawRealPothole(ctx, px, 22);
+      }
+    } else {
+      const patchSpacing = 260;
+      const patchOffset = (snapshot.distanceM * pxPerMeter) % patchSpacing;
+      ctx.fillStyle = "#09090B";
+      for (let x = left - patchOffset; x < right; x += patchSpacing) {
+        ctx.beginPath();
+        ctx.ellipse(x + 80, 18, 16, 4, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
 
-    // Overhead Stoplight Gantry when atStoplight or waiting at light
-    if (snapshot.atStoplight || snapshot.stoplightRedSec > 0) {
+    // V5: World-placed Overhead Stoplight Gantry
+    if (snapshot.nextStoplightM != null) {
+      const gantryX = (snapshot.nextStoplightM - snapshot.distanceM) * pxPerMeter;
+      if (gantryX >= -bikeX - 60 && gantryX <= w - bikeX + 80) {
+        const isRed = snapshot.nextStoplightState
+          ? snapshot.nextStoplightState === "red" || snapshot.stoplightRedSec > 0
+          : snapshot.stoplightRedSec > 0;
+        this.drawStoplightGantry(ctx, gantryX, isRed);
+      }
+    } else if (snapshot.atStoplight || snapshot.stoplightRedSec > 0) {
       const gantryX = snapshot.atStoplight ? 130 : 210;
-      // Stop line on road
-      ctx.fillStyle = "#FFFFFF";
-      ctx.fillRect(gantryX - 18, 2, 10, 88);
+      this.drawStoplightGantry(ctx, gantryX, snapshot.stoplightRedSec > 0);
+    }
+  }
 
-      // Gantry pole & arm
-      ctx.fillStyle = "#52525B";
-      ctx.strokeStyle = "#09090B";
-      ctx.lineWidth = 3;
-      ctx.fillRect(gantryX, -178, 12, 156);
-      ctx.strokeRect(gantryX, -178, 12, 156);
-      ctx.fillRect(gantryX - 96, -172, 108, 10);
-      ctx.strokeRect(gantryX - 96, -172, 108, 10);
+  private drawRealPothole(
+    ctx: CanvasRenderingContext2D,
+    px: number,
+    py: number,
+  ): void {
+    ctx.save();
+    // Crisp yellow hazard crack warning rim so riders can brake for coffee
+    ctx.strokeStyle = "#FACC15";
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.ellipse(px, py, 20, 7, 0, 0, Math.PI * 2);
+    ctx.stroke();
 
-      // Signal housing
-      const sx = gantryX - 88;
-      const sy = -166;
-      ctx.fillStyle = "#18181B";
-      ctx.fillRect(sx, sy, 26, 62);
-      ctx.strokeRect(sx, sy, 26, 62);
+    // Radiating crack ticks
+    ctx.beginPath();
+    ctx.moveTo(px - 22, py - 1);
+    ctx.lineTo(px - 28, py - 4);
+    ctx.moveTo(px + 21, py + 1);
+    ctx.lineTo(px + 27, py + 4);
+    ctx.moveTo(px - 8, py - 7);
+    ctx.lineTo(px - 12, py - 11);
+    ctx.stroke();
 
-      const isRed = snapshot.stoplightRedSec > 0;
-      ctx.fillStyle = isRed ? "#EF4444" : "#450A0A";
-      ctx.beginPath();
-      ctx.arc(sx + 13, sy + 14, 7, 0, Math.PI * 2);
-      ctx.fill();
+    // Dark asphalt crater
+    ctx.fillStyle = "#09090B";
+    ctx.strokeStyle = "#000000";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(px, py, 16, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
 
-      ctx.fillStyle = "#422006";
-      ctx.beginPath();
-      ctx.arc(sx + 13, sy + 31, 7, 0, Math.PI * 2);
-      ctx.fill();
+    // Inner depth rim
+    ctx.fillStyle = "#18181B";
+    ctx.beginPath();
+    ctx.ellipse(px + 2, py + 0.5, 10, 2.8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
 
-      ctx.fillStyle = isRed ? "#052E16" : "#22C55E";
-      ctx.beginPath();
-      ctx.arc(sx + 13, sy + 48, 7, 0, Math.PI * 2);
-      ctx.fill();
+  private drawStoplightGantry(
+    ctx: CanvasRenderingContext2D,
+    gantryX: number,
+    isRed: boolean,
+  ): void {
+    // Stop line on road
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillRect(gantryX - 18, 2, 10, 88);
+
+    // Gantry pole & arm
+    ctx.fillStyle = "#52525B";
+    ctx.strokeStyle = "#09090B";
+    ctx.lineWidth = 3;
+    ctx.fillRect(gantryX, -178, 12, 156);
+    ctx.strokeRect(gantryX, -178, 12, 156);
+    ctx.fillRect(gantryX - 96, -172, 108, 10);
+    ctx.strokeRect(gantryX - 96, -172, 108, 10);
+
+    // Signal housing
+    const sx = gantryX - 88;
+    const sy = -166;
+    ctx.fillStyle = "#18181B";
+    ctx.fillRect(sx, sy, 26, 62);
+    ctx.strokeRect(sx, sy, 26, 62);
+
+    ctx.fillStyle = isRed ? "#EF4444" : "#450A0A";
+    ctx.beginPath();
+    ctx.arc(sx + 13, sy + 14, 7, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "#422006";
+    ctx.beginPath();
+    ctx.arc(sx + 13, sy + 31, 7, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = isRed ? "#052E16" : "#22C55E";
+    ctx.beginPath();
+    ctx.arc(sx + 13, sy + 48, 7, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  private drawLandmarkSignage(
+    ctx: CanvasRenderingContext2D,
+    left: number,
+    right: number,
+    pxPerMeter: number,
+    snapshot: RideTelemetrySnapshot,
+  ): void {
+    const lm = snapshot.landmark?.toLowerCase() ?? "";
+    if (!lm) return;
+
+    if (lm.includes("fox")) {
+      const worldM = Math.floor(snapshot.distanceM / 180) * 180 + 24;
+      const sx = (worldM - snapshot.distanceM) * pxPerMeter;
+      if (sx >= left - 40 && sx <= right + 40) {
+        ctx.save();
+        ctx.fillStyle = "#18181B";
+        ctx.strokeStyle = "#09090B";
+        ctx.lineWidth = 3;
+        ctx.fillRect(sx - 5, -135, 10, 113);
+        ctx.strokeRect(sx - 5, -135, 10, 113);
+
+        ctx.fillStyle = "#DC2626";
+        ctx.fillRect(sx - 44, -176, 88, 44);
+        ctx.strokeRect(sx - 44, -176, 88, 44);
+
+        ctx.fillStyle = "#FFD700";
+        ctx.fillRect(sx - 38, -142, 76, 18);
+        ctx.strokeRect(sx - 38, -142, 76, 18);
+
+        ctx.fillStyle = "#FFD700";
+        ctx.font = `900 20px ${this.fontBangers}`;
+        ctx.textAlign = "center";
+        ctx.fillText("FOX", sx, -150);
+        ctx.fillStyle = "#09090B";
+        ctx.font = `900 10px ${this.fontRusso}`;
+        ctx.fillText("THEATER", sx, -129);
+        ctx.restore();
+      }
+    } else if (lm.includes("grizzly peak")) {
+      const worldM = Math.floor((snapshot.distanceM + 20) / 140) * 140 + 26;
+      const sx = (worldM - snapshot.distanceM) * pxPerMeter;
+      if (sx >= left - 40 && sx <= right + 40) {
+        ctx.save();
+        // Rustic brown & gold overlook comic sign
+        ctx.fillStyle = "#451A03";
+        ctx.strokeStyle = "#09090B";
+        ctx.lineWidth = 3;
+        ctx.fillRect(sx - 36, -98, 7, 76);
+        ctx.strokeRect(sx - 36, -98, 7, 76);
+        ctx.fillRect(sx + 29, -98, 7, 76);
+        ctx.strokeRect(sx + 29, -98, 7, 76);
+
+        ctx.fillStyle = "#78350F";
+        ctx.fillRect(sx - 56, -132, 112, 46);
+        ctx.strokeRect(sx - 56, -132, 112, 46);
+
+        ctx.fillStyle = "#FFD700";
+        ctx.fillRect(sx - 50, -126, 100, 34);
+        ctx.strokeRect(sx - 50, -126, 100, 34);
+
+        ctx.fillStyle = "#09090B";
+        ctx.font = `900 14px ${this.fontBangers}`;
+        ctx.textAlign = "center";
+        ctx.fillText("GRIZZLY PEAK", sx, -110);
+        ctx.font = `900 9px ${this.fontRusso}`;
+        ctx.fillText("OVERLOOK • 1754 FT", sx, -97);
+        ctx.restore();
+      }
     }
   }
 
@@ -940,10 +1260,16 @@ export class RideRenderer {
     );
 
     // Cylinder head & block
-    this.drawCylinder(ctx, snap.cylinderVisual, snap.chtC, engineVib);
+    this.drawCylinder(
+      ctx,
+      snap.cylinderVisual,
+      snap.chtC,
+      engineVib,
+      this.detonationFlashSec,
+    );
 
     // Exhaust pipe sits naturally outside the frame & cylinder
-    this.drawExhaust(ctx, snap.exhaustVisual, engineVib);
+    this.drawExhaust(ctx, snap.exhaustVisual, engineVib, this.backfireTimerSec);
 
     // Animated pedals & rider
     this.drawRiderAndPedals(ctx, snap);
@@ -1005,6 +1331,7 @@ export class RideRenderer {
     ctx: CanvasRenderingContext2D,
     visual: RideTelemetrySnapshot["exhaustVisual"],
     vib: number,
+    backfireTimerSec: number,
   ): void {
     ctx.save();
     ctx.translate(0, vib * 0.5);
@@ -1042,6 +1369,35 @@ export class RideRenderer {
       ctx.fillRect(-56, -28, 16, 7);
       ctx.strokeRect(-56, -28, 16, 7);
     }
+
+    // V6: Brief orange/blue flame pop at exhaust stinger tip on throttle-chop / misfire
+    if (backfireTimerSec > 0) {
+      const progress = backfireTimerSec / 0.085;
+      const tip = this.getExhaustTipOffset(visual);
+      const flameLen = 10 + progress * 11;
+
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, progress * 1.25);
+      // Outer orange flame tongue
+      ctx.fillStyle = "#F97316";
+      ctx.beginPath();
+      ctx.moveTo(tip.x, tip.y - 4);
+      ctx.lineTo(tip.x - flameLen, tip.y);
+      ctx.lineTo(tip.x, tip.y + 4);
+      ctx.closePath();
+      ctx.fill();
+
+      // Inner blue/white core
+      ctx.fillStyle = "#38BDF8";
+      ctx.beginPath();
+      ctx.moveTo(tip.x, tip.y - 2);
+      ctx.lineTo(tip.x - flameLen * 0.55, tip.y);
+      ctx.lineTo(tip.x, tip.y + 2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+
     ctx.restore();
   }
 
@@ -1050,6 +1406,7 @@ export class RideRenderer {
     visual: RideTelemetrySnapshot["cylinderVisual"],
     chtC: number,
     vib: number,
+    detonationFlashSec: number,
   ): void {
     const isBigKit = visual !== "stock";
     const cylW = isBigKit ? 18 : 13;
@@ -1085,6 +1442,31 @@ export class RideRenderer {
       ctx.lineTo(cx + cylW - 1, fy);
       ctx.stroke();
     }
+
+    // V6: Sharp white-gold detonation flash ring at cylinder head (~140ms)
+    if (detonationFlashSec > 0) {
+      const remain = Math.min(1, detonationFlashSec / 0.14);
+      const expand = 1 - remain;
+      const headX = cx + cylW * 0.55;
+      const headY = cy + 3;
+      const radius = 9 + expand * 12;
+
+      ctx.save();
+      ctx.globalAlpha = remain;
+      ctx.strokeStyle = "#FFD700";
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(headX, headY, radius, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.strokeStyle = "#FFFFFF";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(headX, headY, radius * 0.72, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
     ctx.restore();
   }
 
@@ -1438,19 +1820,64 @@ export class RideRenderer {
     ctx.lineTo(shoulderX, shoulderY);
     ctx.stroke();
 
-    // Arm reaching to handlebars
+    // V8: Visibly animate clutch pull, choke reach, or kill-switch hand shift
+    const isDerbi = snap.bikeMake === "derbi-variant";
+    const baseGripX = 10;
+    const baseGripY = isDerbi ? -59 : -64;
+    const killActive = snap.stallReason === "kill-switch";
+    const handX = snap.choke
+      ? 5
+      : killActive
+        ? baseGripX + 4
+        : snap.clutchPulled
+          ? baseGripX - 2
+          : baseGripX;
+    const handY = snap.choke
+      ? -36
+      : killActive
+        ? baseGripY - 2
+        : snap.clutchPulled
+          ? baseGripY + 1.5
+          : baseGripY;
+
+    // Clutch lever on handlebar (pulled inward toward grip when clutchPulled is true)
+    ctx.strokeStyle = snap.clutchPulled ? "#22D3EE" : "#D4D4D8";
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(baseGripX - 2, baseGripY + 2);
+    ctx.lineTo(
+      baseGripX - (snap.clutchPulled ? 6 : 10),
+      baseGripY + (snap.clutchPulled ? 3 : 6),
+    );
+    ctx.stroke();
+
+    // Kill switch thumb button highlight when engaged
+    if (killActive) {
+      ctx.fillStyle = "#EF4444";
+      ctx.beginPath();
+      ctx.arc(baseGripX + 4, baseGripY - 3, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Arm reaching to handlebars (or down to choke lever when choke is active)
     ctx.strokeStyle = "#09090B";
     ctx.lineWidth = 7;
     ctx.beginPath();
     ctx.moveTo(shoulderX, shoulderY + 2);
-    ctx.lineTo(10, -64);
+    ctx.lineTo(handX, handY);
     ctx.stroke();
     ctx.strokeStyle = "#27272A";
     ctx.lineWidth = 4;
     ctx.stroke();
+
+    // Gloved hand
+    ctx.fillStyle = snap.clutchPulled ? "#22D3EE" : "#09090B";
+    ctx.beginPath();
+    ctx.arc(handX, handY, 3.2, 0, Math.PI * 2);
+    ctx.fill();
     ctx.restore();
 
-    // Helmet (PCA Gold + dark visor)
+    // V8: Helmet (PCA Gold #FFD700 with crisp black racing stripe + dark visor)
     ctx.fillStyle = "#FFD700";
     ctx.strokeStyle = "#09090B";
     ctx.lineWidth = 3;
@@ -1458,6 +1885,15 @@ export class RideRenderer {
     ctx.arc(headX, headY, 10.5, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
+
+    // Crisp black racing stripe over helmet crown
+    ctx.save();
+    ctx.strokeStyle = "#09090B";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(headX, headY, 7.5, Math.PI * 1.05, Math.PI * 1.9);
+    ctx.stroke();
+    ctx.restore();
 
     // Visor
     ctx.fillStyle = "#09090B";
@@ -1477,18 +1913,23 @@ export class RideRenderer {
   ): void {
     const density = snap.smoke.density;
     if (snap.engineRunning && !snap.stalled && density > 0.04) {
-      const emitRate = 8 + density * 58; // particles per second
+      // V6: Modulate smoke puff timing with RPM and misfirePattern
+      const rpmPuffHz = Math.max(8, Math.min(44, (snap.rpm / 60) * 0.45));
+      const emitRate = rpmPuffHz * (0.45 + density * 0.95);
       this.smokeAccum += emitRate * dt;
       while (this.smokeAccum >= 1) {
         this.smokeAccum -= 1;
-        this.spawnSmokeParticle(
-          tipX,
-          tipY,
-          snap.smoke.tint,
-          density,
-          metersPerSec,
-          gradeRad,
-        );
+        this.smokeStepCount += 1;
+        if (this.shouldEmitSmokePuff(snap, this.smokeStepCount)) {
+          this.spawnSmokeParticle(
+            tipX,
+            tipY,
+            snap.smoke.tint,
+            density,
+            metersPerSec,
+            gradeRad,
+          );
+        }
       }
     }
 
@@ -1533,6 +1974,31 @@ export class RideRenderer {
         ctx.stroke();
       }
       ctx.restore();
+    }
+  }
+
+  private shouldEmitSmokePuff(
+    snap: RideTelemetrySnapshot,
+    step: number,
+  ): boolean {
+    switch (snap.misfirePattern) {
+      case "alternate":
+        // Rhythmic double-gap puffs: puff…puff (rich 4-stroking visual)
+        return step % 4 === 0 || step % 4 === 1;
+      case "random": {
+        const skipChance = Math.min(0.75, Math.max(0.28, snap.misfireRate));
+        return Math.random() > skipChance;
+      }
+      case "high-rpm": {
+        if (snap.rpm < 4500) return true;
+        const dropChance = Math.min(0.72, Math.max(0.3, snap.misfireRate));
+        return Math.random() > dropChance;
+      }
+      case "dead":
+        return Math.random() < 0.12;
+      case "none":
+      default:
+        return true;
     }
   }
 
