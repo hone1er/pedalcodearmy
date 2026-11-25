@@ -404,6 +404,13 @@ export class PulseSynth {
       case "pothole-bump":
         this.playPotholeBump(now);
         break;
+      case "lane-swerve":
+        this.playArcade("lane-shift");
+        break;
+      case "pothole-dodge":
+        this.playToneSweep(now, 587.33, 783.99, 0.08, "triangle", 0.09);
+        this.playToneSweep(now + 0.05, 783.99, 1046.5, 0.1, "sine", 0.08);
+        break;
       case "stalled":
         this.playNoiseBurst(now, 0.22, 420, 1.4, 0.18);
         break;

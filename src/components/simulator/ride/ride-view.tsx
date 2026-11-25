@@ -1,8 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
+import type {
+  PointerEvent as ReactPointerEvent,
+  TouchEvent as ReactTouchEvent,
+} from "react";
 import {
+  ArrowUpDown,
   Coffee,
   Ear,
   Flame,
@@ -84,6 +88,7 @@ export function RideView() {
     save,
     ride,
     setRideInput,
+    swerveRide,
     toggleListenMode,
     triggerPedalPulse,
     triggerKickstart,
@@ -94,6 +99,11 @@ export function RideView() {
 
   const stageRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const canvasTouchRef = useRef<{
+    startX: number;
+    startY: number;
+    swiped: boolean;
+  } | null>(null);
   const rendererRef = useRef<RideRenderer | null>(null);
   const synthRef = useRef<PulseSynth | null>(null);
 
@@ -123,6 +133,7 @@ export function RideView() {
   });
 
   const [isMuted, setIsMuted] = useState(() => loadSimMutedPreference());
+  const [swerveHintVisible, setSwerveHintVisible] = useState(false);
   const [touchState, setTouchState] = useState({
     throttle: false,
     throttleLocked: false,
@@ -169,14 +180,24 @@ export function RideView() {
     [setRideInput],
   );
 
-  // Sync local choke mirror only when a new ride starts (never overwrite mid-ride)
+  // Sync local choke mirror & start-of-ride swerve hint only when a new ride starts
   useEffect(() => {
     const nextKey = ride?.active ? ride.routeId : null;
     if (nextKey && syncedRideKeyRef.current !== nextKey) {
       heldRef.current.choke = ride?.choke ?? false;
+      setSwerveHintVisible(true);
+    }
+    if (!nextKey) {
+      setSwerveHintVisible(false);
     }
     syncedRideKeyRef.current = nextKey;
   }, [ride?.active, ride?.routeId, ride?.choke]);
+
+  useEffect(() => {
+    if (!swerveHintVisible) return;
+    const timer = window.setTimeout(() => setSwerveHintVisible(false), 3500);
+    return () => window.clearTimeout(timer);
+  }, [swerveHintVisible]);
 
   const handleToggleMute = useCallback(() => {
     unlockAudio();
@@ -229,6 +250,14 @@ export function RideView() {
     setTouchState((s) => ({ ...s, tuck: next }));
     syncControlInput(true);
   }, [syncControlInput, unlockAudio]);
+
+  const handleSwerve = useCallback(
+    (target?: 0 | 1) => {
+      unlockAudio();
+      swerveRide(target);
+    },
+    [swerveRide, unlockAudio],
+  );
 
   // Initialize Canvas 2D Renderer, PulseSynth, ResizeObserver, event subscription & 60fps loop
   useEffect(() => {
@@ -452,6 +481,15 @@ export function RideView() {
       } else if (key === "m" && !e.repeat) {
         e.preventDefault();
         handleToggleMute();
+      } else if (
+        (key === "a" ||
+          key === "d" ||
+          e.key === "ArrowLeft" ||
+          e.key === "ArrowRight") &&
+        !e.repeat
+      ) {
+        e.preventDefault();
+        handleSwerve();
       }
     };
 
@@ -520,6 +558,7 @@ export function RideView() {
   }, [
     handleKickstart,
     handlePedalPulse,
+    handleSwerve,
     handleToggleChoke,
     handleToggleListen,
     handleToggleMute,
@@ -605,6 +644,44 @@ export function RideView() {
     setHoldButton(control, false);
   };
 
+  const handleCanvasTouchStart = (e: ReactTouchEvent<HTMLCanvasElement>) => {
+    unlockAudio();
+    const t = e.touches[0];
+    if (!t) return;
+    canvasTouchRef.current = {
+      startX: t.clientX,
+      startY: t.clientY,
+      swiped: false,
+    };
+  };
+
+  const handleCanvasTouchMove = (e: ReactTouchEvent<HTMLCanvasElement>) => {
+    const g = canvasTouchRef.current;
+    const t = e.touches[0];
+    if (!g || !t || g.swiped) return;
+    const dy = t.clientY - g.startY;
+    if (Math.abs(dy) >= 20) {
+      g.swiped = true;
+      handleSwerve(dy < 0 ? 0 : 1);
+    }
+  };
+
+  const handleCanvasTouchEnd = (e: ReactTouchEvent<HTMLCanvasElement>) => {
+    const g = canvasTouchRef.current;
+    const t = e.changedTouches[0];
+    canvasTouchRef.current = null;
+    if (!g || g.swiped || !t) return;
+    const dx = Math.abs(t.clientX - g.startX);
+    const dy = Math.abs(t.clientY - g.startY);
+    if (dx < 22 && dy < 22) {
+      handleSwerve();
+    }
+  };
+
+  const handleCanvasTouchCancel = () => {
+    canvasTouchRef.current = null;
+  };
+
   if (!ride) {
     return (
       <div className="flex min-h-[420px] items-center justify-center border-4 border-black bg-zinc-950 p-6 text-[#FFD700] shadow-[6px_6px_0px_#000]">
@@ -630,6 +707,16 @@ export function RideView() {
   const seizePct = Math.min(
     100,
     Math.max(0, (ride.seizeClutchWindowMs / SEIZE_CLUTCH_WINDOW_MS) * 100),
+  );
+  const activeLane = ride.lane ?? 0;
+  const activeLanePos = ride.lanePos ?? activeLane;
+  const currentLaneLabel = activeLane === 0 ? "TOP" : "LOW";
+  const potholeThreat = Boolean(
+    ride.upcomingPotholes?.some((h) => {
+      if (h.hit || h.dodged) return false;
+      const dist = h.positionM - ride.distanceM;
+      return dist >= 0 && dist <= 28 && Math.abs(activeLanePos - h.lane) < 0.5;
+    }),
   );
 
   return (
@@ -837,11 +924,31 @@ export function RideView() {
       >
         <canvas
           ref={canvasRef}
-          className="block h-full w-full md:h-[420px]"
+          onTouchStart={handleCanvasTouchStart}
+          onTouchMove={handleCanvasTouchMove}
+          onTouchEnd={handleCanvasTouchEnd}
+          onTouchCancel={handleCanvasTouchCancel}
+          className="block h-full w-full touch-none md:h-[420px]"
         />
 
         {/* Comic-book Sound & Symptom Captions */}
         <CaptionLayer captions={ride.captions} />
+
+        {/* Start-of-Ride 3.5s Swerve Control Hint */}
+        {swerveHintVisible &&
+          !seizeUrgent &&
+          !ride.pedalingHome &&
+          !showRoadsideBar && (
+            <div className="pointer-events-none absolute inset-x-0 bottom-2 z-20 flex justify-center px-2 md:bottom-3 md:px-3">
+              <div className="border-2 border-[#FFD700] bg-black/85 px-2.5 py-1 text-center text-[10px] font-black uppercase tracking-wide text-[#FFD700] shadow-[3px_3px_0px_#000] md:hidden">
+                SWERVE PAD OR TAP/SWIPE ROAD TO DODGE POTHOLES
+              </div>
+              <div className="hidden border-2 border-[#FFD700] bg-black/85 px-3 py-1.5 text-center text-[11px] font-black uppercase tracking-wide text-[#FFD700] shadow-[3px_3px_0px_#000] md:block">
+                A/D OR ←/→ SWERVE POTHOLES &bull; W GAS &bull; S BRAKE &bull; Q
+                CLUTCH
+              </div>
+            </div>
+          )}
 
         {/* Stoplight Indicator */}
         {(ride.atStoplight || ride.stoplightRedSec > 0) && (
@@ -1113,8 +1220,8 @@ export function RideView() {
       </div>
 
       {/* Mobile Primary Dual-Thumb Driving Gamepad */}
-      <div className="grid shrink-0 grid-cols-12 gap-1.5 border-2 border-black bg-[#FFD700] p-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] md:hidden">
-        {/* Left Thumb: Brake + Clutch */}
+      <div className="flex shrink-0 items-stretch gap-1.5 border-2 border-black bg-[#FFD700] p-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] md:hidden">
+        {/* Left Thumb: Brake + Swerve + Clutch */}
         <button
           type="button"
           onContextMenu={(e) => e.preventDefault()}
@@ -1123,7 +1230,7 @@ export function RideView() {
           onPointerLeave={(e) => handleHoldPointerRelease("brake", e)}
           onPointerCancel={(e) => handleHoldPointerRelease("brake", e)}
           onLostPointerCapture={() => setHoldButton("brake", false)}
-          className={`col-span-3 flex min-h-[60px] touch-none flex-col items-center justify-center border-[3px] border-black px-2 py-2 text-xs font-black uppercase shadow-[2px_2px_0px_#000] ${
+          className={`flex min-h-[60px] flex-[1.05] touch-none flex-col items-center justify-center border-[3px] border-black px-1.5 py-2 text-[11px] font-black uppercase shadow-[2px_2px_0px_#000] ${
             touchState.brake || ride.brake
               ? "translate-y-0.5 bg-red-600 text-white shadow-none"
               : "bg-white text-black"
@@ -1135,12 +1242,35 @@ export function RideView() {
         <button
           type="button"
           onContextMenu={(e) => e.preventDefault()}
+          onPointerDown={(e) => {
+            e.preventDefault();
+            handleSwerve();
+          }}
+          aria-label={`Swerve lane (currently ${currentLaneLabel})`}
+          className={`flex min-h-[60px] flex-[1.2] touch-none flex-col items-center justify-center border-[3px] border-black px-1.5 py-2 text-[11px] font-black uppercase shadow-[2px_2px_0px_#000] active:translate-y-0.5 active:shadow-none ${
+            potholeThreat
+              ? "animate-pulse bg-amber-400 text-black"
+              : "bg-cyan-300 text-black"
+          }`}
+        >
+          <span className="inline-flex items-center gap-1 leading-none">
+            <ArrowUpDown className="h-3.5 w-3.5 shrink-0" />
+            <span>SWERVE</span>
+          </span>
+          <span className="mt-0.5 bg-black px-1 py-0.5 text-[9px] font-black leading-none text-[#FFD700]">
+            {currentLaneLabel}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onContextMenu={(e) => e.preventDefault()}
           onPointerDown={(e) => handleHoldPointerDown("clutch", e)}
           onPointerUp={(e) => handleHoldPointerRelease("clutch", e)}
           onPointerLeave={(e) => handleHoldPointerRelease("clutch", e)}
           onPointerCancel={(e) => handleHoldPointerRelease("clutch", e)}
           onLostPointerCapture={() => setHoldButton("clutch", false)}
-          className={`col-span-3 flex min-h-[60px] touch-none flex-col items-center justify-center border-[3px] border-black px-2 py-2 text-xs font-black uppercase shadow-[2px_2px_0px_#000] ${
+          className={`flex min-h-[60px] flex-1 touch-none flex-col items-center justify-center border-[3px] border-black px-1.5 py-2 text-[11px] font-black uppercase shadow-[2px_2px_0px_#000] ${
             touchState.clutch || ride.clutchPulled
               ? "translate-y-0.5 bg-orange-500 text-black shadow-none"
               : seizeUrgent || ride.seizeWarning
@@ -1161,7 +1291,7 @@ export function RideView() {
             e.preventDefault();
             handlePedalPulse();
           }}
-          className={`col-span-2 flex min-h-[60px] touch-none flex-col items-center justify-center border-[3px] border-black px-1 py-2 text-[11px] font-black uppercase text-black shadow-[2px_2px_0px_#000] active:translate-y-0.5 active:shadow-none ${
+          className={`flex min-h-[60px] flex-[0.95] touch-none flex-col items-center justify-center border-[3px] border-black px-1 py-2 text-[11px] font-black uppercase text-black shadow-[2px_2px_0px_#000] active:translate-y-0.5 active:shadow-none ${
             ride.pedalingHome || ride.gradePct >= 6
               ? "bg-cyan-300"
               : "bg-cyan-200"
@@ -1181,7 +1311,7 @@ export function RideView() {
           onPointerLeave={(e) => handleHoldPointerRelease("throttle", e)}
           onPointerCancel={(e) => handleHoldPointerRelease("throttle", e)}
           onLostPointerCapture={() => setHoldButton("throttle", false)}
-          className={`relative col-span-4 flex min-h-[60px] touch-none flex-col items-center justify-center overflow-hidden border-[3px] border-black px-2 py-2 text-sm font-black uppercase shadow-[2px_2px_0px_#000] ${
+          className={`relative flex min-h-[60px] flex-[1.45] touch-none flex-col items-center justify-center overflow-hidden border-[3px] border-black px-1.5 py-2 text-sm font-black uppercase shadow-[2px_2px_0px_#000] ${
             touchState.throttle || touchState.throttleLocked || ride.throttle > 0.1
               ? "translate-y-0.5 bg-emerald-500 text-black shadow-none"
               : "bg-black text-[#FFD700]"
@@ -1389,7 +1519,7 @@ export function RideView() {
 
       {/* Desktop Touch & Mouse Cockpit Controls */}
       <div className="hidden flex-wrap items-stretch justify-between gap-2.5 border-4 border-black bg-[#FFD700] p-2.5 shadow-[5px_5px_0px_#000] md:flex">
-        {/* Left Controls: Brake, Clutch, Kickstart */}
+        {/* Left Controls: Brake, Swerve, Clutch, Kickstart */}
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
@@ -1406,6 +1536,26 @@ export function RideView() {
             }`}
           >
             Brake [S]
+          </button>
+
+          <button
+            type="button"
+            onClick={(e) => {
+              e.currentTarget.blur();
+              handleSwerve();
+            }}
+            aria-label={`Swerve lane [A/D] (currently ${currentLaneLabel})`}
+            className={`inline-flex touch-none items-center gap-1.5 border-[3px] border-black px-3.5 py-3 text-xs font-black uppercase shadow-[3px_3px_0px_#000] active:translate-x-[2px] active:translate-y-[2px] sm:text-sm ${
+              potholeThreat
+                ? "animate-pulse bg-amber-400 text-black"
+                : "bg-cyan-300 text-black hover:bg-cyan-200"
+            }`}
+          >
+            <ArrowUpDown className="h-4 w-4 shrink-0" />
+            <span>Swerve [A/D]</span>
+            <span className="bg-black px-1.5 py-0.5 text-[10px] font-black text-[#FFD700]">
+              {currentLaneLabel}
+            </span>
           </button>
 
           <button
@@ -1446,8 +1596,8 @@ export function RideView() {
 
         {/* Center Keyboard Legend (Desktop) */}
         <div className="hidden items-center text-[11px] font-black uppercase tracking-tight text-black xl:flex">
-          W/↑ Throttle • S/↓ Brake • Space Tuck • P Pedal • Q Clutch • C Choke •
-          Hold K @ WOT = Plug Chop
+          W/↑ Throttle • S/↓ Brake • A/D Swerve • Space Tuck • P Pedal • Q Clutch
+          • C Choke • Hold K @ WOT = Plug Chop
         </div>
 
         {/* Right Controls: Pedal, Tuck, Throttle */}

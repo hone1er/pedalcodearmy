@@ -11,6 +11,7 @@ import type {
   OwnedBike,
   PlugColor,
   RideInput,
+  RidePotholeTelemetry,
   RideSummary,
   RideTelemetrySnapshot,
   RouteMedal,
@@ -111,6 +112,11 @@ export interface RideState {
   lastPotholeSec: number;
   /** Real, pre-generated pothole world positions (deterministic per seed). */
   potholes: RoutePothole[];
+  /** Active lateral track (0 = curb/top, 1 = outer/lower) for dodging potholes. */
+  lane: 0 | 1;
+  /** Smoothly interpolated lateral position (0..1). */
+  lanePos: number;
+  potholesDodged: number;
 
   captions: ComicCaption[];
   captionSeq: number;
@@ -180,6 +186,9 @@ export function createRideState(bike: OwnedBike, route: RouteSpec, opts: RideOpt
     coffeeSpillPct: route.hasCoffeeCup ? 0 : null,
     lastPotholeSec: -10,
     potholes: generatePotholes(route, opts.seed),
+    lane: 0,
+    lanePos: 0,
+    potholesDodged: 0,
     captions: [],
     captionSeq: 1,
     captionCooldowns: {},
@@ -255,7 +264,13 @@ export function stepRide(state: RideState, input: RideInput, dt: number): SimEve
   if (state.finished) return events;
   const { route, profile, rng } = state;
   const eng = state.engine;
-  state.input = { ...input, pedalPulse: false, kickstartPulse: false };
+  state.input = {
+    ...input,
+    pedalPulse: false,
+    kickstartPulse: false,
+    swerveToggle: false,
+    lane: undefined,
+  };
   state.elapsedSec += dt;
 
   // ── Captions TTL ──
@@ -417,17 +432,57 @@ export function stepRide(state: RideState, input: RideInput, dt: number): SimEve
   const mph = newV * MPS_TO_MPH;
   state.topSpeedMph = Math.max(state.topSpeedMph, mph);
 
-  // ── Real potholes & coffee (skill-based: brake or slow down before them) ──
+  // ── Lateral track swerve (dodge potholes) ──
+  if (!eng.seizedHard) {
+    const desiredLane: 0 | 1 =
+      input.lane === 0 || input.lane === 1
+        ? input.lane
+        : input.swerveToggle
+          ? state.lane === 0
+            ? 1
+            : 0
+          : state.lane;
+    if (desiredLane !== state.lane) {
+      state.lane = desiredLane;
+      events.push({ type: "lane-swerve", lane: desiredLane });
+    }
+  }
+  const laneDiff = state.lane - state.lanePos;
+  if (Math.abs(laneDiff) <= 0.005) {
+    state.lanePos = state.lane;
+  } else {
+    const laneStep = Math.min(Math.abs(laneDiff), 7.5 * dt);
+    state.lanePos += Math.sign(laneDiff) * laneStep;
+  }
+
+  // ── Real potholes & coffee (swerve to dodge, or brake/slow down before them) ──
   if (state.distanceM > prevDistanceM) {
     for (const hole of state.potholes) {
-      if (hole.hit) continue;
+      if (hole.hit || hole.dodged) continue;
       if (hole.positionM > state.distanceM) break;
       if (hole.positionM <= prevDistanceM) continue;
+      const lateralDist = Math.abs(state.lanePos - hole.lane);
+      const dodged =
+        lateralDist >= 0.42 || (state.lane !== hole.lane && lateralDist >= 0.32);
+      if (dodged) {
+        hole.dodged = true;
+        state.potholesDodged += 1;
+        events.push({ type: "pothole-dodge" });
+        if (state.coffeeSpillPct !== null) {
+          addCaption(state, events, "Clean swerve! Coffee steady!", "cyan", "pothole-dodge", 6, 2200);
+        } else {
+          addCaption(state, events, "Clean swerve!", "cyan", "pothole-dodge", 8, 1800);
+        }
+        continue;
+      }
       hole.hit = true;
       state.lastPotholeSec = state.elapsedSec;
       events.push({ type: "pothole-bump" });
+      const careful = input.brake || mph < POTHOLE_CAREFUL_MPH;
+      if (!state.pedalingHome && state.speedMps > 3) {
+        state.speedMps = Math.max(0, state.speedMps - (careful ? 0.15 : 0.7));
+      }
       if (state.coffeeSpillPct !== null) {
-        const careful = input.brake || mph < POTHOLE_CAREFUL_MPH;
         const spill = (1.5 + mph * 0.18) * (careful ? 0.25 : 1);
         state.coffeeSpillPct = clamp(state.coffeeSpillPct + spill, 0, 100);
         if (careful) {
@@ -569,13 +624,20 @@ export function buildRideSnapshot(state: RideState): RideTelemetrySnapshot {
   const input = state.input;
   const light = nearestStoplight(state);
   const upcomingPotholesM: number[] = [];
+  const upcomingPotholes: RidePotholeTelemetry[] = [];
   let nextPotholeM: number | null = null;
   for (const hole of state.potholes) {
     const d = hole.positionM - state.distanceM;
     if (d < -15) continue;
     if (d > 75) break;
     upcomingPotholesM.push(hole.positionM);
-    if (!hole.hit && d >= 0 && nextPotholeM === null) nextPotholeM = d;
+    upcomingPotholes.push({
+      positionM: hole.positionM,
+      lane: hole.lane,
+      hit: hole.hit,
+      dodged: hole.dodged,
+    });
+    if (!hole.hit && !hole.dodged && d >= 0 && nextPotholeM === null) nextPotholeM = d;
   }
   const airFilterVisual = readAirFilterVisual(p);
   return {
@@ -599,7 +661,11 @@ export function buildRideSnapshot(state: RideState): RideTelemetrySnapshot {
     nextStoplightM: light ? light.positionM : null,
     nextStoplightState: light ? light.state : null,
     upcomingPotholesM,
+    upcomingPotholes,
     nextPotholeM,
+    lane: state.lane,
+    lanePos: state.lanePos,
+    potholesDodged: state.potholesDodged,
     throttle: input.throttle,
     brake: input.brake,
     tuck: input.tuck,

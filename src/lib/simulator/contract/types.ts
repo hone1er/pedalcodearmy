@@ -200,6 +200,8 @@ export interface RideInput {
   clutch: boolean; // Pull clutch for seize save!
   killSwitch: boolean; // Hold at WOT to do a true plug chop
   kickstartPulse: boolean; // Tap to kickstart when stalled
+  lane?: 0 | 1; // Explicit lateral track target (0 = curb/top, 1 = outer/low)
+  swerveToggle?: boolean; // One-shot toggle between track 0 and track 1
 }
 
 export interface StandTestInput {
@@ -228,6 +230,8 @@ export type SimEvent =
   | { type: "kickstart"; started: boolean; compressionFeel: "strong" | "weak" }
   | { type: "gear-shift"; gear: 1 | 2 }
   | { type: "pothole-bump" }
+  | { type: "pothole-dodge" }
+  | { type: "lane-swerve"; lane: 0 | 1 }
   | { type: "mission-complete"; cash: number; rep: number; bonusText?: string }
   | { type: "badge-earned"; badgeId: string; title: string; description: string };
 

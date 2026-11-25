@@ -164,6 +164,8 @@ export class RideRenderer {
   private prevThrottle = 0;
   private backfireTimerSec = 0;
   private detonationFlashSec = 0;
+  private prevLanePos = 0;
+  private smoothSwerveTilt = 0;
 
   private fontBangers = 'Impact, "Arial Black", sans-serif';
   private fontRusso = '"Arial Black", sans-serif';
@@ -198,6 +200,25 @@ export class RideRenderer {
 
   private getBikeScale(): number {
     return this.width < 520 ? Math.max(0.78, this.width / 540) : 1;
+  }
+
+  private getTrackMetrics(
+    h: number,
+    roadY: number,
+  ): {
+    track0Y: number;
+    track1Y: number;
+    dividerY: number;
+    yellowStripeY: number;
+  } {
+    const asphaltH = Math.max(48, h - roadY);
+    const track0Y = Math.round(Math.min(18, Math.max(10, asphaltH * 0.14)));
+    const track1Y = Math.round(Math.min(54, Math.max(32, asphaltH * 0.44)));
+    const dividerY = Math.round((track0Y + track1Y) * 0.5);
+    const yellowStripeY = Math.round(
+      track1Y + Math.max(14, (track1Y - track0Y) * 0.62),
+    );
+    return { track0Y, track1Y, dividerY, yellowStripeY };
   }
 
   resize(width?: number, height?: number): void {
@@ -301,9 +322,19 @@ export class RideRenderer {
     const palette = PALETTES[snapshot.timeOfDay];
     const w = this.width;
     const h = this.height;
-    const roadY = Math.round(h * 0.72);
+    const roadY = Math.round(h * 0.67);
     const bikeX = Math.round(w * (w < 560 ? 0.22 : w < 640 ? 0.28 : 0.32));
     const bikeScale = this.getBikeScale();
+    const lanePos = Math.max(0, Math.min(1, snapshot.lanePos ?? 0));
+    const tracks = this.getTrackMetrics(h, roadY);
+    const bikeLaneY = tracks.track0Y + lanePos * (tracks.track1Y - tracks.track0Y);
+    const laneVel = (lanePos - this.prevLanePos) / dt;
+    this.prevLanePos = lanePos;
+    this.smoothSwerveTilt +=
+      (Math.max(-1, Math.min(1, laneVel * 0.14)) - this.smoothSwerveTilt) *
+      Math.min(1, dt * 14);
+    const perspectiveScale = 1 + lanePos * 0.05;
+    const effectiveScale = bikeScale * perspectiveScale;
 
     ctx.save();
     ctx.scale(this.dpr, this.dpr);
@@ -370,8 +401,8 @@ export class RideRenderer {
         : 0;
 
     const exhaustTip = this.getExhaustTipOffset(snapshot.exhaustVisual);
-    const localTipX = exhaustTip.x * bikeScale;
-    const localTipY = (exhaustTip.y + bounce) * bikeScale;
+    const localTipX = exhaustTip.x * effectiveScale;
+    const localTipY = (exhaustTip.y + bounce) * effectiveScale + bikeLaneY;
     const cosG = Math.cos(gradeRad);
     const sinG = Math.sin(gradeRad);
     const worldTipX = bikeX + shakeX + localTipX * cosG - localTipY * sinG;
@@ -381,7 +412,7 @@ export class RideRenderer {
     ctx.translate(bikeX + shakeX, roadY + shakeY);
     ctx.rotate(gradeRad);
 
-    this.drawRoadAndHazards(ctx, w, h, bikeX, palette, snapshot);
+    this.drawRoadAndHazards(ctx, w, h, bikeX, palette, snapshot, tracks, lanePos);
 
     // Skid marks behind rear tire if seizing/locked while moving (not pedaling home)
     if (
@@ -390,7 +421,7 @@ export class RideRenderer {
       snapshot.speedMph > 1
     ) {
       ctx.fillStyle = "rgba(9, 9, 11, 0.75)";
-      ctx.fillRect(-260, 0, 232, 6);
+      ctx.fillRect(-260, bikeLaneY - 2, 232, 6);
     }
 
     ctx.restore();
@@ -410,8 +441,12 @@ export class RideRenderer {
     ctx.save();
     ctx.translate(bikeX + shakeX, roadY + shakeY);
     ctx.rotate(gradeRad);
-    if (bikeScale !== 1) {
-      ctx.scale(bikeScale, bikeScale);
+    ctx.translate(0, bikeLaneY);
+    if (Math.abs(this.smoothSwerveTilt) > 0.002) {
+      ctx.rotate(this.smoothSwerveTilt * 0.05);
+    }
+    if (effectiveScale !== 1) {
+      ctx.scale(effectiveScale, effectiveScale);
     }
 
     this.drawMopedAndRider(
@@ -977,6 +1012,13 @@ export class RideRenderer {
     bikeX: number,
     palette: SkyPalette,
     snapshot: RideTelemetrySnapshot,
+    tracks: {
+      track0Y: number;
+      track1Y: number;
+      dividerY: number;
+      yellowStripeY: number;
+    },
+    lanePos: number,
   ): void {
     const left = -bikeX - 180;
     const right = w - bikeX + 240;
@@ -998,12 +1040,19 @@ export class RideRenderer {
     ctx.fillStyle = palette.roadTop;
     ctx.fillRect(left, 0, roadSpan, h + Math.ceil(w * 0.25));
 
-    // Scrolling dashed yellow road markings
+    // Subtle 2-track swerve lane divider so both riding lines are clearly readable
     const pxPerMeter = this.getPxPerMeter();
+    const laneDividerScroll = (snapshot.distanceM * pxPerMeter) % 110;
+    ctx.fillStyle = "rgba(255, 255, 255, 0.16)";
+    for (let x = left - laneDividerScroll; x < right; x += 110) {
+      ctx.fillRect(x, tracks.dividerY - 1, 44, 2.5);
+    }
+
+    // Scrolling dashed yellow road centerline markings
     const roadScroll = (snapshot.distanceM * pxPerMeter) % 140;
     ctx.fillStyle = palette.roadStripe;
     for (let x = left - roadScroll; x < right; x += 140) {
-      ctx.fillRect(x, 42, 68, 7);
+      ctx.fillRect(x, tracks.yellowStripeY, 68, 7);
     }
 
     // Distance mile-markers every 250m
@@ -1031,12 +1080,39 @@ export class RideRenderer {
     // V5: Roadside comic landmark signs (Fox Theater & Grizzly Peak Overlook)
     this.drawLandmarkSignage(ctx, left, right, pxPerMeter, snapshot);
 
-    // V5: Real potholes on asphalt when provided; fallback to decorative patches only if absent
-    if (snapshot.upcomingPotholesM !== undefined) {
+    // Real potholes on 2-track asphalt (dodge by swerving between tracks!)
+    if (snapshot.upcomingPotholes !== undefined) {
+      for (const hole of snapshot.upcomingPotholes) {
+        const px = (hole.positionM - snapshot.distanceM) * pxPerMeter;
+        if (px < left || px > right) continue;
+        const py = hole.lane === 0 ? tracks.track0Y : tracks.track1Y;
+        const distAheadM = hole.positionM - snapshot.distanceM;
+        const inMyTrack =
+          !hole.hit &&
+          !hole.dodged &&
+          distAheadM > -0.5 &&
+          Math.abs(lanePos - hole.lane) < 0.5;
+        const urgentDanger = inMyTrack && distAheadM >= 0 && distAheadM <= 30;
+        this.drawRealPothole(ctx, px, py, {
+          inMyTrack,
+          urgentDanger,
+          dodged: hole.dodged,
+          lane: hole.lane,
+        });
+      }
+    } else if (snapshot.upcomingPotholesM !== undefined) {
       for (const pm of snapshot.upcomingPotholesM) {
         const px = (pm - snapshot.distanceM) * pxPerMeter;
         if (px < left || px > right) continue;
-        this.drawRealPothole(ctx, px, 22);
+        const distAheadM = pm - snapshot.distanceM;
+        const inMyTrack = distAheadM > -0.5 && lanePos < 0.5;
+        const urgentDanger = inMyTrack && distAheadM >= 0 && distAheadM <= 30;
+        this.drawRealPothole(ctx, px, tracks.track0Y, {
+          inMyTrack,
+          urgentDanger,
+          dodged: false,
+          lane: 0,
+        });
       }
     } else {
       const patchSpacing = 260;
@@ -1044,7 +1120,7 @@ export class RideRenderer {
       ctx.fillStyle = "#09090B";
       for (let x = left - patchOffset; x < right; x += patchSpacing) {
         ctx.beginPath();
-        ctx.ellipse(x + 80, 18, 16, 4, 0, 0, Math.PI * 2);
+        ctx.ellipse(x + 80, tracks.track0Y, 16, 4, 0, 0, Math.PI * 2);
         ctx.fill();
       }
     }
@@ -1068,24 +1144,71 @@ export class RideRenderer {
     ctx: CanvasRenderingContext2D,
     px: number,
     py: number,
+    opts: {
+      inMyTrack: boolean;
+      urgentDanger: boolean;
+      dodged: boolean;
+      lane: 0 | 1;
+    },
   ): void {
     ctx.save();
-    // Crisp yellow hazard crack warning rim so riders can brake for coffee
-    ctx.strokeStyle = "#FACC15";
-    ctx.lineWidth = 2.5;
-    ctx.beginPath();
-    ctx.ellipse(px, py, 20, 7, 0, 0, Math.PI * 2);
-    ctx.stroke();
 
-    // Radiating crack ticks
-    ctx.beginPath();
-    ctx.moveTo(px - 22, py - 1);
-    ctx.lineTo(px - 28, py - 4);
-    ctx.moveTo(px + 21, py + 1);
-    ctx.lineTo(px + 27, py + 4);
-    ctx.moveTo(px - 8, py - 7);
-    ctx.lineTo(px - 12, py - 11);
-    ctx.stroke();
+    if (opts.urgentDanger) {
+      const pulse = 0.55 + 0.45 * Math.sin(this.elapsedRenderSec * 14);
+      ctx.strokeStyle = `rgba(239, 68, 68, ${pulse})`;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.ellipse(px, py, 25, 10, 0, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Animated swerve chevron pointing toward the clear track
+      const arrowDir = opts.lane === 0 ? 1 : -1;
+      const bob = Math.sin(this.elapsedRenderSec * 12) * 2.5 * arrowDir;
+      const ax = px - 28;
+      const ay = py + bob;
+      ctx.fillStyle = "#FFD700";
+      ctx.strokeStyle = "#09090B";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(ax, ay + arrowDir * 8);
+      ctx.lineTo(ax - 7, ay - arrowDir * 4);
+      ctx.lineTo(ax + 7, ay - arrowDir * 4);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    if (opts.dodged) {
+      ctx.strokeStyle = "rgba(52, 211, 153, 0.6)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(px, py, 20, 7, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (opts.inMyTrack) {
+      // Crisp yellow hazard crack warning rim so riders can swerve or brake
+      ctx.strokeStyle = "#FACC15";
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.ellipse(px, py, 20, 7, 0, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Radiating crack ticks
+      ctx.beginPath();
+      ctx.moveTo(px - 22, py - 1);
+      ctx.lineTo(px - 28, py - 4);
+      ctx.moveTo(px + 21, py + 1);
+      ctx.lineTo(px + 27, py + 4);
+      ctx.moveTo(px - 8, py - 7);
+      ctx.lineTo(px - 12, py - 11);
+      ctx.stroke();
+    } else {
+      // Safe-track crater uses calmer muted rim
+      ctx.strokeStyle = "#52525B";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(px, py, 19, 6.5, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
 
     // Dark asphalt crater
     ctx.fillStyle = "#09090B";

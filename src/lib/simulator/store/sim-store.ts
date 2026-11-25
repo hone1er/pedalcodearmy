@@ -300,6 +300,7 @@ class SimStoreImpl {
   private rideInput: RideInput = { ...NEUTRAL_INPUT };
   private pendingPedal = false;
   private pendingKick = false;
+  private pendingSwerve: "toggle" | 0 | 1 | null = null;
   private latestRide: RideTelemetrySnapshot | null = null;
   private hudRide: RideTelemetrySnapshot | null = null;
 
@@ -619,10 +620,17 @@ class SimStoreImpl {
   private stepOnce(): boolean {
     const ride = this.rideState;
     if (!ride) return false;
+    const swerveCmd = this.pendingSwerve;
+    this.pendingSwerve = null;
     const input: RideInput = {
       ...this.rideInput,
       pedalPulse: this.pendingPedal,
       kickstartPulse: this.pendingKick,
+      ...(swerveCmd === "toggle"
+        ? { swerveToggle: true }
+        : swerveCmd === 0 || swerveCmd === 1
+          ? { lane: swerveCmd }
+          : {}),
     };
     this.pendingPedal = false;
     this.pendingKick = false;
@@ -631,7 +639,13 @@ class SimStoreImpl {
     let urgent = false;
     for (const ev of events) {
       this.emitEvent(ev);
-      if (ev.type !== "caption" && ev.type !== "pothole-bump") urgent = true;
+      if (
+        ev.type !== "caption" &&
+        ev.type !== "pothole-bump" &&
+        ev.type !== "pothole-dodge"
+      ) {
+        urgent = true;
+      }
       if (ev.type === "seize-saved") {
         const stats = { ...this.ui.save.stats, seizesSaved: this.ui.save.stats.seizesSaved + 1 };
         this.ui = { ...this.ui, save: { ...this.ui.save, stats } };
@@ -1104,6 +1118,7 @@ class SimStoreImpl {
     this.rideInput = { ...NEUTRAL_INPUT };
     this.pendingKick = false;
     this.pendingPedal = false;
+    this.pendingSwerve = null;
     this.accumulator = 0;
     this.latestRide = buildRideSnapshot(this.rideState);
     this.patchUi({
@@ -1117,16 +1132,22 @@ class SimStoreImpl {
   };
 
   setRideInput = (partial: Partial<RideInput>): void => {
-    const { pedalPulse, kickstartPulse, ...held } = partial;
+    const { pedalPulse, kickstartPulse, swerveToggle, lane, ...held } = partial;
     const chokeChanged = held.choke !== undefined && held.choke !== this.rideInput.choke;
     this.rideInput = { ...this.rideInput, ...held };
     if (pedalPulse) this.triggerPedalPulse();
     if (kickstartPulse) this.pendingKick = true;
+    if (lane === 0 || lane === 1) this.pendingSwerve = lane;
+    else if (swerveToggle) this.pendingSwerve = "toggle";
     if (chokeChanged && this.rideState && !this.rideState.finished) {
       this.rideState.input.choke = this.rideInput.choke;
       this.latestRide = buildRideSnapshot(this.rideState);
       this.commit();
     }
+  };
+
+  swerveRide = (target?: 0 | 1): void => {
+    this.pendingSwerve = target ?? "toggle";
   };
 
   toggleListenMode = (): void => {
@@ -1179,6 +1200,7 @@ class SimStoreImpl {
     if (ride && !ride.finished) this.completeRide("aborted", { showSummary: false });
     this.rideState = null;
     this.latestRide = null;
+    this.pendingSwerve = null;
     this.patchUi({ phase: "GARAGE" });
     this.syncLoop();
   };
@@ -1354,6 +1376,7 @@ class SimStoreImpl {
     clearSave();
     this.rideState = null;
     this.latestRide = null;
+    this.pendingSwerve = null;
     this.haltStand();
     this.initialized = true;
     this.patchUi(
@@ -1404,6 +1427,7 @@ class SimStoreImpl {
     buyCraigslistBike: this.buyCraigslistBike,
     startRide: this.startRide,
     setRideInput: this.setRideInput,
+    swerveRide: this.swerveRide,
     toggleListenMode: this.toggleListenMode,
     triggerPedalPulse: this.triggerPedalPulse,
     triggerKickstart: this.triggerKickstart,

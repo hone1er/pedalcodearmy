@@ -23,6 +23,13 @@ import type {
   ToolReading,
 } from "./types";
 
+export interface RidePotholeTelemetry {
+  positionM: number;
+  lane: 0 | 1;
+  hit: boolean;
+  dodged: boolean;
+}
+
 /**
  * Observable-only ride telemetry snapshot.
  * GOLDEN CONTRACT RULE: Contains ZERO FaultIds — UI, Audio, and Renderer
@@ -54,8 +61,16 @@ export interface RideTelemetrySnapshot {
   nextStoplightState?: "pending" | "red" | "green" | null;
   /** World meter positions of upcoming potholes on the route */
   upcomingPotholesM?: number[];
+  /** Detailed upcoming pothole state + lane for visual telegraphs and swerve alerts */
+  upcomingPotholes?: RidePotholeTelemetry[];
   /** Distance in meters to the next pothole ahead (or null) */
   nextPotholeM?: number | null;
+  /** Active lateral riding track (0 = curb/top, 1 = outer/lower) */
+  lane?: 0 | 1;
+  /** Smoothly interpolated lateral position (0..1) */
+  lanePos?: number;
+  /** Total potholes dodged on this ride */
+  potholesDodged?: number;
 
   // Controls
   throttle: number;
@@ -177,6 +192,7 @@ export interface SimStoreActions {
   // Ride & Runner lifecycle
   startRide: (this: void, routeId: RouteId) => void;
   setRideInput: (this: void, partial: Partial<RideInput>) => void;
+  swerveRide: (this: void, target?: 0 | 1) => void;
   toggleListenMode: (this: void) => void;
   triggerPedalPulse: (this: void) => void;
   triggerKickstart: (this: void) => void;
