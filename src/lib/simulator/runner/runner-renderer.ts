@@ -147,18 +147,23 @@ export class RunnerRenderer {
     this.fontsResolved = Boolean(bangers || russo);
   }
 
+  private getViewportScale(): number {
+    return this.width < 520 ? Math.max(0.76, this.width / 540) : 1;
+  }
+
   private getRoadMetrics(): RoadMetrics {
     const w = this.width;
     const h = this.height;
-    const horizonY = Math.round(h * 0.44);
+    const isShortLandscape = h < 260;
+    const horizonY = Math.round(h * (isShortLandscape ? 0.34 : 0.44));
     const roadH = h - horizonY;
-    const curbH = 12;
-    const laneTop = horizonY + curbH + 10;
-    const laneAreaH = roadH - curbH - 22;
+    const curbH = isShortLandscape ? 8 : 12;
+    const laneTop = horizonY + curbH + (isShortLandscape ? 6 : 10);
+    const laneAreaH = roadH - curbH - (isShortLandscape ? 14 : 22);
     const laneH = laneAreaH / 3;
     const laneY = (laneFloat: number) => laneTop + (laneFloat + 0.5) * laneH;
-    const playerScreenX = Math.round(w * 0.2);
-    const pxPerMeter = Math.max(11, Math.min(18, w / 58));
+    const playerScreenX = Math.round(w * (w < 540 ? 0.16 : 0.2));
+    const pxPerMeter = Math.max(6.8, Math.min(18, w / 55));
     return {
       horizonY,
       roadH,
@@ -173,8 +178,8 @@ export class RunnerRenderer {
   }
 
   resize(width: number, height: number): void {
-    const w = Math.max(300, Math.floor(width));
-    const h = Math.max(240, Math.floor(height));
+    const w = Math.max(280, Math.floor(width));
+    const h = Math.max(150, Math.floor(height));
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     if (w === this.width && h === this.height && dpr === this.dpr) return;
     this.width = w;
@@ -1104,7 +1109,7 @@ export class RunnerRenderer {
       return;
     }
 
-    const scale = laneDepthScale(ent.lanePos);
+    const scale = laneDepthScale(ent.lanePos) * this.getViewportScale();
 
     if (ent.kind === "collectible") {
       ctx.save();
@@ -1728,7 +1733,7 @@ export class RunnerRenderer {
 
     const eng = state.engine;
     const p = state.profile;
-    const depthScale = laneDepthScale(state.lanePos);
+    const depthScale = laneDepthScale(state.lanePos) * this.getViewportScale();
     const wheelieLift = state.wheelieHeightFrac * 18;
     const wheeliePitch = -state.wheelieHeightFrac * 0.48; // nose up!
     const vib = eng.running && !state.dying ? Math.sin(state.elapsedSec * 65) * 0.9 : 0;

@@ -35,6 +35,7 @@ import { simStore, useSimStore } from "@/lib/simulator/store/sim-store";
 
 interface HeldControls {
   throttleHeld: boolean;
+  throttleLocked: boolean;
   brake: boolean;
   tuck: boolean;
   clutch: boolean;
@@ -101,6 +102,7 @@ export function RideView() {
 
   const heldRef = useRef<HeldControls>({
     throttleHeld: false,
+    throttleLocked: false,
     brake: false,
     tuck: false,
     clutch: false,
@@ -123,6 +125,7 @@ export function RideView() {
   const [isMuted, setIsMuted] = useState(() => loadSimMutedPreference());
   const [touchState, setTouchState] = useState({
     throttle: false,
+    throttleLocked: false,
     brake: false,
     tuck: false,
     clutch: false,
@@ -212,6 +215,21 @@ export function RideView() {
     }
   }, [toggleListenMode, unlockAudio]);
 
+  const handleToggleThrottleLock = useCallback(() => {
+    unlockAudio();
+    const next = !heldRef.current.throttleLocked;
+    heldRef.current.throttleLocked = next;
+    setTouchState((s) => ({ ...s, throttleLocked: next }));
+  }, [unlockAudio]);
+
+  const handleToggleTuck = useCallback(() => {
+    unlockAudio();
+    const next = !heldRef.current.tuck;
+    heldRef.current.tuck = next;
+    setTouchState((s) => ({ ...s, tuck: next }));
+    syncControlInput(true);
+  }, [syncControlInput, unlockAudio]);
+
   // Initialize Canvas 2D Renderer, PulseSynth, ResizeObserver, event subscription & 60fps loop
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -248,6 +266,7 @@ export function RideView() {
       resizeObserver.observe(stage);
     }
     window.addEventListener("resize", handleResize);
+    handleResize();
 
     const unsubscribeEvents = simStore.subscribeEvents((ev: SimEvent) => {
       synth.playEvent(ev);
@@ -267,9 +286,11 @@ export function RideView() {
       const dt = Math.min(0.05, Math.max(0.001, (now - lastTime) / 1000));
       lastTime = now;
 
-      // Smoothly ramp throttle 0..1 when held
-      const targetThrottle = heldRef.current.throttleHeld ? 1 : 0;
-      const rate = heldRef.current.throttleHeld ? 4.2 : 5.2;
+      // Smoothly ramp throttle 0..1 when held or WOT-locked
+      const throttleActive =
+        heldRef.current.throttleHeld || heldRef.current.throttleLocked;
+      const targetThrottle = throttleActive ? 1 : 0;
+      const rate = throttleActive ? 4.2 : 5.2;
       if (throttleValRef.current < targetThrottle) {
         throttleValRef.current = Math.min(
           1,
@@ -324,6 +345,7 @@ export function RideView() {
     (updateReactState = true) => {
       const hadHeld =
         heldRef.current.throttleHeld ||
+        heldRef.current.throttleLocked ||
         heldRef.current.brake ||
         heldRef.current.tuck ||
         heldRef.current.clutch ||
@@ -331,6 +353,7 @@ export function RideView() {
         throttleValRef.current !== 0;
 
       heldRef.current.throttleHeld = false;
+      heldRef.current.throttleLocked = false;
       heldRef.current.brake = false;
       heldRef.current.tuck = false;
       heldRef.current.clutch = false;
@@ -340,6 +363,7 @@ export function RideView() {
       if (updateReactState && hadHeld) {
         setTouchState({
           throttle: false,
+          throttleLocked: false,
           brake: false,
           tuck: false,
           clutch: false,
@@ -384,9 +408,10 @@ export function RideView() {
         }
       } else if (key === "s" || e.key === "ArrowDown") {
         e.preventDefault();
-        if (!heldRef.current.brake) {
+        if (!heldRef.current.brake || heldRef.current.throttleLocked) {
           heldRef.current.brake = true;
-          setTouchState((s) => ({ ...s, brake: true }));
+          heldRef.current.throttleLocked = false;
+          setTouchState((s) => ({ ...s, brake: true, throttleLocked: false }));
           syncControlInput(true);
         }
       } else if (e.code === "Space") {
@@ -510,6 +535,39 @@ export function RideView() {
     unlockAudio();
     if (control === "throttle") {
       heldRef.current.throttleHeld = pressed;
+      // Pressing throttle while WOT-locked releases lock cleanly on release
+      if (!pressed && heldRef.current.throttleLocked) {
+        heldRef.current.throttleLocked = false;
+        setTouchState((s) => ({
+          ...s,
+          throttle: false,
+          throttleLocked: false,
+        }));
+        return;
+      }
+    } else if (control === "brake") {
+      heldRef.current.brake = pressed;
+      if (pressed && heldRef.current.throttleLocked) {
+        heldRef.current.throttleLocked = false;
+        setTouchState((s) => ({ ...s, brake: true, throttleLocked: false }));
+        syncControlInput(true);
+        return;
+      }
+      syncControlInput(true);
+    } else if (control === "killSwitch") {
+      heldRef.current.killSwitch = pressed;
+      // After releasing a WOT plug chop, also drop WOT lock so the bike coasts cleanly to the curb
+      if (!pressed && heldRef.current.throttleLocked) {
+        heldRef.current.throttleLocked = false;
+        setTouchState((s) => ({
+          ...s,
+          killSwitch: false,
+          throttleLocked: false,
+        }));
+        syncControlInput(true);
+        return;
+      }
+      syncControlInput(true);
     } else {
       heldRef.current[control] = pressed;
       syncControlInput(true);
@@ -577,10 +635,106 @@ export function RideView() {
   return (
     <div
       onPointerDown={unlockAudio}
-      className="flex w-full min-w-0 flex-col gap-3 select-none"
+      className="flex h-full w-full min-w-0 flex-col gap-1.5 p-1.5 select-none md:h-auto md:gap-3 md:p-0"
     >
-      {/* Top Route & Telemetry Bar */}
-      <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 border-4 border-black bg-zinc-950 px-3 py-2.5 text-white shadow-[5px_5px_0px_#000]">
+      {/* Mobile Ultra-Compact Top Telemetry Bar */}
+      <div className="flex shrink-0 items-center justify-between gap-1.5 border-2 border-[#FFD700] bg-zinc-950 px-2 py-1.5 text-white md:hidden">
+        {/* Speed + Grade */}
+        <div className="flex items-center gap-1.5">
+          <div className="flex items-baseline gap-0.5 border border-zinc-700 bg-black px-2 py-0.5">
+            <span
+              className={`text-lg font-black leading-none tabular-nums ${
+                ride.powerbandActive ? "text-[#FFD700]" : "text-white"
+              }`}
+              style={{ fontFamily: "var(--font-orbitron), Orbitron, monospace" }}
+            >
+              {Math.round(ride.speedMph)}
+            </span>
+            <span className="text-[9px] font-black uppercase text-zinc-400">
+              MPH
+            </span>
+          </div>
+          <span
+            className={`px-1.5 py-0.5 text-[10px] font-black uppercase tabular-nums ${
+              ride.gradePct >= 6
+                ? "bg-orange-500 text-black"
+                : ride.gradePct <= -3
+                  ? "bg-cyan-400 text-black"
+                  : "bg-zinc-800 text-zinc-300"
+            }`}
+          >
+            {ride.gradePct > 0 ? `+${ride.gradePct}` : ride.gradePct}%
+          </span>
+          {ride.hasChtGauge && (
+            <span
+              className={`border px-1.5 py-0.5 text-[10px] font-black tabular-nums ${
+                ride.chtC >= 205
+                  ? "border-red-500 bg-red-950 text-red-200"
+                  : ride.chtC >= 175
+                    ? "border-orange-500 bg-orange-950/60 text-orange-300"
+                    : "border-zinc-700 bg-black text-emerald-300"
+              }`}
+            >
+              {Math.round(ride.chtC)}°C
+            </span>
+          )}
+          {ride.hasTach && !ride.hasChtGauge && (
+            <span className="border border-zinc-700 bg-black px-1.5 py-0.5 text-[10px] font-black text-cyan-300 tabular-nums">
+              {(ride.rpm / 1000).toFixed(1)}k
+            </span>
+          )}
+        </div>
+
+        {/* Mini Route Progress */}
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5 px-1">
+          <div className="flex items-center justify-between gap-1 text-[9px] font-black uppercase">
+            <span className="truncate text-[#FFD700]">{ride.routeName}</span>
+            <span className="shrink-0 text-zinc-300 tabular-nums">
+              {Math.round(progressPct)}%
+            </span>
+          </div>
+          <div className="h-2 w-full overflow-hidden border border-black bg-zinc-800">
+            <div
+              className="h-full bg-[#FFD700] transition-all duration-150"
+              style={{ width: `${progressPct}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Audio & Exit */}
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.currentTarget.blur();
+              handleToggleMute();
+            }}
+            aria-label={isMuted ? "Unmute audio" : "Mute audio"}
+            className="flex h-8 w-8 items-center justify-center border-2 border-zinc-700 bg-black text-white"
+          >
+            {isMuted ? (
+              <VolumeX className="h-3.5 w-3.5 text-red-400" />
+            ) : (
+              <Volume2 className="h-3.5 w-3.5 text-[#FFD700]" />
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.currentTarget.blur();
+              abortRideToGarage();
+            }}
+            aria-label="Back to Garage"
+            className="flex h-8 items-center gap-1 border-2 border-black bg-zinc-200 px-2 text-[10px] font-black uppercase text-black"
+          >
+            <Wrench className="h-3.5 w-3.5" />
+            <span>Exit</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Desktop Top Route & Telemetry Bar */}
+      <div className="hidden min-w-0 flex-wrap items-center justify-between gap-2 border-4 border-black bg-zinc-950 px-3 py-2.5 text-white shadow-[5px_5px_0px_#000] md:flex">
         <div className="flex flex-wrap items-center gap-2">
           <span className="border-2 border-black bg-[#FFD700] px-2.5 py-0.5 text-xs font-black uppercase tracking-wider text-black">
             {ride.routeName}
@@ -679,11 +833,11 @@ export function RideView() {
       {/* Main Canvas Stage + Overlays */}
       <div
         ref={stageRef}
-        className="relative w-full min-w-0 overflow-hidden border-4 border-black bg-zinc-950 shadow-[6px_6px_0px_#000]"
+        className="relative min-h-0 w-full min-w-0 flex-1 overflow-hidden border-2 border-black bg-zinc-950 md:flex-none md:border-4 md:shadow-[6px_6px_0px_#000]"
       >
         <canvas
           ref={canvasRef}
-          className="block h-[290px] w-full sm:h-[380px] md:h-[420px]"
+          className="block h-full w-full md:h-[420px]"
         />
 
         {/* Comic-book Sound & Symptom Captions */}
@@ -691,17 +845,17 @@ export function RideView() {
 
         {/* Stoplight Indicator */}
         {(ride.atStoplight || ride.stoplightRedSec > 0) && (
-          <div className="pointer-events-none absolute top-3 left-3 z-20 flex items-center gap-2 border-[3px] border-black bg-black/90 px-3 py-1.5 shadow-[4px_4px_0px_#000]">
+          <div className="pointer-events-none absolute top-2 left-2 z-20 flex max-w-[68%] items-center gap-1.5 border-2 border-black bg-black/90 px-2 py-1 shadow-[3px_3px_0px_#000] md:top-3 md:left-3 md:max-w-none md:gap-2 md:border-[3px] md:px-3 md:py-1.5">
             <span
-              className={`h-3.5 w-3.5 rounded-full border-2 border-black ${
+              className={`h-3 w-3 shrink-0 rounded-full border-2 border-black md:h-3.5 md:w-3.5 ${
                 ride.stoplightRedSec > 0
                   ? "animate-pulse bg-red-500"
                   : "bg-green-400"
               }`}
             />
-            <span className="text-xs font-black uppercase tracking-wide text-white">
+            <span className="text-[10px] font-black uppercase tracking-wide text-white md:text-xs">
               {ride.stoplightRedSec > 0
-                ? `RED LIGHT — EASE OFF THROTTLE (IDLE TEST) (${ride.stoplightRedSec.toFixed(1)}s)`
+                ? `RED LIGHT — EASE OFF (${ride.stoplightRedSec.toFixed(1)}s)`
                 : "GREEN LIGHT — SEND IT!"}
             </span>
           </div>
@@ -709,14 +863,14 @@ export function RideView() {
 
         {/* Telegraph Coffee Cup Status */}
         {ride.coffeeTempPct !== null && (
-          <div className="pointer-events-none absolute top-3 right-3 z-20 flex items-center gap-2.5 border-[3px] border-black bg-amber-950/90 px-3 py-1.5 text-white shadow-[4px_4px_0px_#000]">
-            <Coffee className="h-4 w-4 text-[#FFD700]" />
-            <div className="text-[11px] font-black uppercase leading-tight">
+          <div className="pointer-events-none absolute top-2 right-2 z-20 flex items-center gap-1.5 border-2 border-black bg-amber-950/90 px-2 py-1 text-white shadow-[3px_3px_0px_#000] md:top-3 md:right-3 md:gap-2.5 md:border-[3px] md:px-3 md:py-1.5">
+            <Coffee className="h-3.5 w-3.5 text-[#FFD700] md:h-4 md:w-4" />
+            <div className="text-[10px] font-black uppercase leading-tight md:text-[11px]">
               <div className="text-[#FFD700]">
-                Coffee {Math.round(ride.coffeeTempPct)}% Hot
+                {Math.round(ride.coffeeTempPct)}% Hot
               </div>
               <div className="text-orange-300">
-                Spilled {Math.round(ride.coffeeSpillPct ?? 0)}%
+                Spill {Math.round(ride.coffeeSpillPct ?? 0)}%
               </div>
             </div>
           </div>
@@ -724,22 +878,22 @@ export function RideView() {
 
         {/* Seize Pre-Warning Badge */}
         {ride.seizeWarning && !seizeUrgent && (
-          <div className="pointer-events-none absolute top-16 right-3 z-20 max-w-[calc(100%-1.5rem)] border-[3px] border-black bg-orange-500 px-3 py-1 text-xs font-black uppercase tracking-wide text-black shadow-[4px_4px_0px_#000]">
-            <span className="inline-flex items-center gap-1.5">
-              <Flame className="h-4 w-4 shrink-0" />
-              RUNNING HOT — PULL CLUTCH [Q] OR EASE THROTTLE!
+          <div className="pointer-events-none absolute top-12 right-2 z-20 max-w-[calc(100%-1rem)] border-2 border-black bg-orange-500 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-black shadow-[3px_3px_0px_#000] md:top-16 md:right-3 md:border-[3px] md:px-3 md:text-xs">
+            <span className="inline-flex items-center gap-1">
+              <Flame className="h-3.5 w-3.5 shrink-0 md:h-4 md:w-4" />
+              HOT — PULL CLUTCH OR EASE GAS!
             </span>
           </div>
         )}
 
         {/* URGENT SEIZE CLUTCH-SAVE ALERT */}
         {seizeUrgent && (
-          <div className="absolute inset-x-4 top-1/2 z-30 -translate-y-1/2 border-4 border-black bg-red-600 p-4 text-center text-white shadow-[8px_8px_0px_#000] sm:inset-x-auto sm:left-1/2 sm:w-full sm:max-w-lg sm:-translate-x-1/2">
-            <div className="flex items-center justify-center gap-2 text-xl font-black uppercase tracking-wider sm:text-2xl">
-              <OctagonAlert className="h-7 w-7 animate-bounce text-[#FFD700]" />
-              <span>ENGINE SEIZING! PRESS [Q] CLUTCH NOW!</span>
+          <div className="absolute inset-x-2 top-1/2 z-30 -translate-y-1/2 border-4 border-black bg-red-600 p-3 text-center text-white shadow-[6px_6px_0px_#000] sm:inset-x-auto sm:left-1/2 sm:w-full sm:max-w-lg sm:-translate-x-1/2 md:p-4">
+            <div className="flex items-center justify-center gap-2 text-base font-black uppercase tracking-wider sm:text-2xl">
+              <OctagonAlert className="h-5 w-5 animate-bounce text-[#FFD700] sm:h-7 sm:w-7" />
+              <span>ENGINE SEIZING! PULL CLUTCH NOW!</span>
             </div>
-            <div className="mt-2 h-3 w-full overflow-hidden border-2 border-black bg-black">
+            <div className="mt-1.5 h-2.5 w-full overflow-hidden border-2 border-black bg-black md:mt-2 md:h-3">
               <div
                 className="h-full bg-[#FFD700]"
                 style={{ width: `${seizePct}%` }}
@@ -753,23 +907,23 @@ export function RideView() {
               onPointerLeave={(e) => handleHoldPointerRelease("clutch", e)}
               onPointerCancel={(e) => handleHoldPointerRelease("clutch", e)}
               onLostPointerCapture={() => setHoldButton("clutch", false)}
-              className="mt-3 w-full touch-none border-[3px] border-black bg-[#FFD700] px-4 py-2.5 text-base font-black uppercase tracking-wider text-black shadow-[4px_4px_0px_#000] active:translate-x-[2px] active:translate-y-[2px]"
+              className="mt-2.5 min-h-[48px] w-full touch-none border-[3px] border-black bg-[#FFD700] px-4 py-2 text-sm font-black uppercase tracking-wider text-black shadow-[4px_4px_0px_#000] active:translate-x-[2px] active:translate-y-[2px] md:mt-3 md:text-base"
             >
-              PULL CLUTCH [Q] — SAVE THE TOP END!
+              HOLD CLUTCH — SAVE THE TOP END!
             </button>
           </div>
         )}
 
         {/* Pedaling Home Active Banner */}
         {ride.pedalingHome && (
-          <div className="absolute inset-x-3 bottom-3 z-20 flex flex-wrap items-center justify-between gap-2 border-[3px] border-black bg-[#FFD700] px-3 py-2 text-black shadow-[4px_4px_0px_#000]">
+          <div className="absolute inset-x-2 bottom-2 z-20 flex flex-wrap items-center justify-between gap-2 border-[3px] border-black bg-[#FFD700] px-2.5 py-2 text-black shadow-[4px_4px_0px_#000] md:inset-x-3 md:bottom-3 md:px-3">
             <div>
-              <div className="text-sm font-black uppercase">
-                PEDALING HOME — TAP [P] IN RHYTHM!
+              <div className="text-xs font-black uppercase md:text-sm">
+                PEDALING HOME — TAP PEDAL IN RHYTHM!
               </div>
-              <div className="text-xs font-bold">
-                {Math.max(0, Math.round(ride.pedalHomeRemainingM))}m left to the
-                garage • Stamina {Math.round(ride.stamina)}%
+              <div className="text-[11px] font-bold md:text-xs">
+                {Math.max(0, Math.round(ride.pedalHomeRemainingM))}m left •
+                Stamina {Math.round(ride.stamina)}%
               </div>
             </div>
             <button
@@ -778,25 +932,25 @@ export function RideView() {
                 e.currentTarget.blur();
                 handlePedalPulse();
               }}
-              className="border-2 border-black bg-black px-3 py-1.5 text-xs font-black uppercase text-[#FFD700] active:scale-95"
+              className="min-h-[40px] border-2 border-black bg-black px-3.5 py-1.5 text-xs font-black uppercase text-[#FFD700] active:scale-95"
             >
-              PEDAL [P]
+              PEDAL!
             </button>
           </div>
         )}
 
         {/* Roadside / Stalled Action Bar */}
         {showRoadsideBar && (
-          <div className="absolute inset-x-3 bottom-3 z-20 border-[3px] border-black bg-zinc-950/95 p-3 text-white shadow-[5px_5px_0px_#000]">
-            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <p className="text-xs font-black uppercase tracking-wide text-[#FFD700] sm:text-sm">
+          <div className="absolute inset-x-2 bottom-2 z-20 border-[3px] border-black bg-zinc-950/95 p-2.5 text-white shadow-[5px_5px_0px_#000] md:inset-x-3 md:bottom-3 md:p-3">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-1.5">
+              <p className="text-[11px] font-black uppercase tracking-wide text-[#FFD700] sm:text-sm">
                 {describeStallReason(ride.stallReason, ride.seizedHard)}
               </p>
-              <span className="text-xs font-bold text-zinc-400">
+              <span className="text-[11px] font-bold text-zinc-400">
                 Cash: ${save.cash}
               </span>
             </div>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4 md:gap-2">
               {!ride.seizedHard && (
                 <button
                   type="button"
@@ -804,10 +958,10 @@ export function RideView() {
                     e.currentTarget.blur();
                     handleKickstart();
                   }}
-                  className="inline-flex items-center justify-center gap-1.5 border-2 border-black bg-[#FFD700] px-3 py-2 text-xs font-black uppercase text-black shadow-[3px_3px_0px_#000] hover:bg-yellow-300"
+                  className="inline-flex min-h-[42px] items-center justify-center gap-1.5 border-2 border-black bg-[#FFD700] px-2.5 py-2 text-xs font-black uppercase text-black shadow-[2px_2px_0px_#000] hover:bg-yellow-300"
                 >
-                  <RotateCcw className="h-4 w-4" />
-                  Kickstart [R]
+                  <RotateCcw className="h-4 w-4 shrink-0" />
+                  <span>Kickstart</span>
                 </button>
               )}
               <button
@@ -816,10 +970,10 @@ export function RideView() {
                   e.currentTarget.blur();
                   handleStartPedalingHome();
                 }}
-                className="inline-flex items-center justify-center gap-1.5 border-2 border-black bg-cyan-400 px-3 py-2 text-xs font-black uppercase text-black shadow-[3px_3px_0px_#000] hover:bg-cyan-300"
+                className="inline-flex min-h-[42px] items-center justify-center gap-1.5 border-2 border-black bg-cyan-400 px-2.5 py-2 text-xs font-black uppercase text-black shadow-[2px_2px_0px_#000] hover:bg-cyan-300"
               >
-                <Zap className="h-4 w-4" />
-                Pedal Home [P] (Free)
+                <Zap className="h-4 w-4 shrink-0" />
+                <span>Pedal Home</span>
               </button>
               <button
                 type="button"
@@ -828,14 +982,14 @@ export function RideView() {
                   callTowTruck();
                 }}
                 disabled={!canAffordTow}
-                className={`inline-flex items-center justify-center gap-1.5 border-2 border-black px-3 py-2 text-xs font-black uppercase shadow-[3px_3px_0px_#000] ${
+                className={`inline-flex min-h-[42px] items-center justify-center gap-1.5 border-2 border-black px-2.5 py-2 text-xs font-black uppercase shadow-[2px_2px_0px_#000] ${
                   canAffordTow
                     ? "bg-orange-400 text-black hover:bg-orange-300"
                     : "cursor-not-allowed bg-zinc-800 text-zinc-500"
                 }`}
               >
-                <Truck className="h-4 w-4" />
-                Tow Truck (${TOW_COST})
+                <Truck className="h-4 w-4 shrink-0" />
+                <span>Tow (${TOW_COST})</span>
               </button>
               <button
                 type="button"
@@ -843,18 +997,212 @@ export function RideView() {
                   e.currentTarget.blur();
                   abortRideToGarage();
                 }}
-                className="inline-flex items-center justify-center gap-1.5 border-2 border-black bg-zinc-200 px-3 py-2 text-xs font-black uppercase text-black shadow-[3px_3px_0px_#000] hover:bg-white"
+                className="inline-flex min-h-[42px] items-center justify-center gap-1.5 border-2 border-black bg-zinc-200 px-2.5 py-2 text-xs font-black uppercase text-black shadow-[2px_2px_0px_#000] hover:bg-white"
               >
-                <Wrench className="h-4 w-4" />
-                Back to Garage
+                <Wrench className="h-4 w-4 shrink-0" />
+                <span>Garage</span>
               </button>
             </div>
           </div>
         )}
       </div>
 
-      {/* Diegetic Instrument Cluster */}
-      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 lg:grid-cols-5">
+      {/* Mobile Secondary Utility Strip (WOT Lock, Tuck, Choke, Plug Chop, Kick, Listen) */}
+      <div className="flex shrink-0 items-center gap-1.5 overflow-x-auto bg-zinc-950 px-1 py-1 md:hidden">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.currentTarget.blur();
+            handleToggleThrottleLock();
+          }}
+          aria-pressed={touchState.throttleLocked}
+          className={`min-h-[38px] shrink-0 touch-none border-2 px-2.5 text-[11px] font-black uppercase ${
+            touchState.throttleLocked
+              ? "border-[#FFD700] bg-[#FFD700] text-black"
+              : "border-zinc-700 bg-black text-zinc-200"
+          }`}
+        >
+          {touchState.throttleLocked ? "WOT: ON" : "WOT Lock"}
+        </button>
+
+        <button
+          type="button"
+          onClick={(e) => {
+            e.currentTarget.blur();
+            handleToggleTuck();
+          }}
+          aria-pressed={touchState.tuck || ride.tuck}
+          className={`min-h-[38px] shrink-0 touch-none border-2 px-2.5 text-[11px] font-black uppercase ${
+            touchState.tuck || ride.tuck
+              ? "border-emerald-400 bg-emerald-400 text-black"
+              : "border-zinc-700 bg-black text-zinc-200"
+          }`}
+        >
+          Tuck {touchState.tuck || ride.tuck ? "ON" : "OFF"}
+        </button>
+
+        <button
+          type="button"
+          onClick={(e) => {
+            e.currentTarget.blur();
+            handleToggleChoke();
+          }}
+          aria-pressed={ride.choke}
+          className={`min-h-[38px] shrink-0 touch-none border-2 px-2.5 text-[11px] font-black uppercase ${
+            ride.choke
+              ? "border-cyan-400 bg-cyan-400 text-black"
+              : "border-zinc-700 bg-black text-zinc-200"
+          }`}
+        >
+          Choke {ride.choke ? "ON" : "OFF"}
+        </button>
+
+        <button
+          type="button"
+          onContextMenu={(e) => e.preventDefault()}
+          onPointerDown={(e) => handleHoldPointerDown("killSwitch", e)}
+          onPointerUp={(e) => handleHoldPointerRelease("killSwitch", e)}
+          onPointerLeave={(e) => handleHoldPointerRelease("killSwitch", e)}
+          onPointerCancel={(e) => handleHoldPointerRelease("killSwitch", e)}
+          onLostPointerCapture={() => setHoldButton("killSwitch", false)}
+          className={`min-h-[38px] shrink-0 touch-none border-2 px-2.5 text-[11px] font-black uppercase ${
+            touchState.killSwitch
+              ? "border-red-400 bg-red-600 text-white"
+              : "border-zinc-700 bg-black text-zinc-200"
+          }`}
+        >
+          Plug Chop
+        </button>
+
+        <button
+          type="button"
+          onClick={(e) => {
+            e.currentTarget.blur();
+            handleKickstart();
+          }}
+          disabled={ride.seizedHard}
+          className={`min-h-[38px] shrink-0 touch-none border-2 px-2.5 text-[11px] font-black uppercase ${
+            ride.seizedHard
+              ? "border-zinc-800 bg-zinc-900 text-zinc-600"
+              : ride.stalled
+                ? "animate-pulse border-[#FFD700] bg-[#FFD700] text-black"
+                : "border-zinc-700 bg-black text-[#FFD700]"
+          }`}
+        >
+          Kick
+        </button>
+
+        {ride.hasStethoscope && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.currentTarget.blur();
+              handleToggleListen();
+            }}
+            aria-pressed={ride.listenMode}
+            className={`inline-flex min-h-[38px] shrink-0 touch-none items-center gap-1 border-2 px-2.5 text-[11px] font-black uppercase ${
+              ride.listenMode
+                ? "border-cyan-400 bg-cyan-400 text-black"
+                : "border-zinc-700 bg-black text-zinc-200"
+            }`}
+          >
+            <Ear className="h-3.5 w-3.5" />
+            Listen
+          </button>
+        )}
+      </div>
+
+      {/* Mobile Primary Dual-Thumb Driving Gamepad */}
+      <div className="grid shrink-0 grid-cols-12 gap-1.5 border-2 border-black bg-[#FFD700] p-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] md:hidden">
+        {/* Left Thumb: Brake + Clutch */}
+        <button
+          type="button"
+          onContextMenu={(e) => e.preventDefault()}
+          onPointerDown={(e) => handleHoldPointerDown("brake", e)}
+          onPointerUp={(e) => handleHoldPointerRelease("brake", e)}
+          onPointerLeave={(e) => handleHoldPointerRelease("brake", e)}
+          onPointerCancel={(e) => handleHoldPointerRelease("brake", e)}
+          onLostPointerCapture={() => setHoldButton("brake", false)}
+          className={`col-span-3 flex min-h-[60px] touch-none flex-col items-center justify-center border-[3px] border-black px-2 py-2 text-xs font-black uppercase shadow-[2px_2px_0px_#000] ${
+            touchState.brake || ride.brake
+              ? "translate-y-0.5 bg-red-600 text-white shadow-none"
+              : "bg-white text-black"
+          }`}
+        >
+          <span>BRAKE</span>
+        </button>
+
+        <button
+          type="button"
+          onContextMenu={(e) => e.preventDefault()}
+          onPointerDown={(e) => handleHoldPointerDown("clutch", e)}
+          onPointerUp={(e) => handleHoldPointerRelease("clutch", e)}
+          onPointerLeave={(e) => handleHoldPointerRelease("clutch", e)}
+          onPointerCancel={(e) => handleHoldPointerRelease("clutch", e)}
+          onLostPointerCapture={() => setHoldButton("clutch", false)}
+          className={`col-span-3 flex min-h-[60px] touch-none flex-col items-center justify-center border-[3px] border-black px-2 py-2 text-xs font-black uppercase shadow-[2px_2px_0px_#000] ${
+            touchState.clutch || ride.clutchPulled
+              ? "translate-y-0.5 bg-orange-500 text-black shadow-none"
+              : seizeUrgent || ride.seizeWarning
+                ? "animate-pulse bg-red-600 text-white"
+                : "bg-zinc-100 text-black"
+          }`}
+        >
+          <span>CLUTCH</span>
+          {(seizeUrgent || ride.seizeWarning) && (
+            <span className="text-[9px] leading-none">SAVE!</span>
+          )}
+        </button>
+
+        {/* Right Thumb: Pedal + Giant Throttle Pad */}
+        <button
+          type="button"
+          onPointerDown={(e) => {
+            e.preventDefault();
+            handlePedalPulse();
+          }}
+          className={`col-span-2 flex min-h-[60px] touch-none flex-col items-center justify-center border-[3px] border-black px-1 py-2 text-[11px] font-black uppercase text-black shadow-[2px_2px_0px_#000] active:translate-y-0.5 active:shadow-none ${
+            ride.pedalingHome || ride.gradePct >= 6
+              ? "bg-cyan-300"
+              : "bg-cyan-200"
+          }`}
+        >
+          <span>PEDAL</span>
+          <span className="text-[9px] font-bold opacity-80 tabular-nums">
+            {Math.round(ride.stamina)}%
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onContextMenu={(e) => e.preventDefault()}
+          onPointerDown={(e) => handleHoldPointerDown("throttle", e)}
+          onPointerUp={(e) => handleHoldPointerRelease("throttle", e)}
+          onPointerLeave={(e) => handleHoldPointerRelease("throttle", e)}
+          onPointerCancel={(e) => handleHoldPointerRelease("throttle", e)}
+          onLostPointerCapture={() => setHoldButton("throttle", false)}
+          className={`relative col-span-4 flex min-h-[60px] touch-none flex-col items-center justify-center overflow-hidden border-[3px] border-black px-2 py-2 text-sm font-black uppercase shadow-[2px_2px_0px_#000] ${
+            touchState.throttle || touchState.throttleLocked || ride.throttle > 0.1
+              ? "translate-y-0.5 bg-emerald-500 text-black shadow-none"
+              : "bg-black text-[#FFD700]"
+          }`}
+        >
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-y-0 left-0 bg-emerald-400/30 transition-all duration-75"
+            style={{ width: `${Math.round(ride.throttle * 100)}%` }}
+          />
+          <span className="relative z-10 leading-none">
+            {touchState.throttleLocked ? "WOT LOCKED" : "GAS"}
+          </span>
+          <span className="relative z-10 mt-0.5 text-[10px] font-black opacity-90 tabular-nums">
+            {Math.round(ride.throttle * 100)}%
+          </span>
+        </button>
+      </div>
+
+      {/* Desktop Diegetic Instrument Cluster */}
+      <div className="hidden grid-cols-2 gap-2.5 sm:grid-cols-4 md:grid lg:grid-cols-5">
         {/* Speedometer */}
         <div className="border-4 border-black bg-zinc-950 p-3 text-white shadow-[4px_4px_0px_#000]">
           <div className="flex items-center justify-between text-[11px] font-black uppercase text-zinc-400">
@@ -1039,8 +1387,8 @@ export function RideView() {
         </div>
       </div>
 
-      {/* Touch & Mouse Cockpit Controls */}
-      <div className="flex flex-wrap items-stretch justify-between gap-2.5 border-4 border-black bg-[#FFD700] p-2.5 shadow-[5px_5px_0px_#000]">
+      {/* Desktop Touch & Mouse Cockpit Controls */}
+      <div className="hidden flex-wrap items-stretch justify-between gap-2.5 border-4 border-black bg-[#FFD700] p-2.5 shadow-[5px_5px_0px_#000] md:flex">
         {/* Left Controls: Brake, Clutch, Kickstart */}
         <div className="flex flex-wrap items-center gap-2">
           <button
