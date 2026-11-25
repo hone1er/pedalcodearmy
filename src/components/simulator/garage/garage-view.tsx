@@ -652,7 +652,7 @@ export function GarageView() {
 
             {standTest ? (
               <div className="mt-3 space-y-2.5 border-t border-zinc-800 pt-3">
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="grid grid-cols-2 items-center gap-2 sm:flex sm:flex-wrap">
                   <button
                     type="button"
                     onClick={() => {
@@ -660,7 +660,7 @@ export function GarageView() {
                       kickStandTest();
                     }}
                     disabled={standTest.engineRunning || standTest.seizedHard}
-                    className="inline-flex items-center gap-1.5 border-2 border-black bg-[#FFD700] px-3 py-2 text-xs font-black uppercase text-black shadow-[2px_2px_0px_#FFF] hover:bg-yellow-300 disabled:cursor-not-allowed disabled:border-zinc-700 disabled:bg-zinc-900 disabled:text-zinc-500 disabled:shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700]"
+                    className="inline-flex min-h-[44px] items-center justify-center gap-1.5 border-2 border-black bg-[#FFD700] px-3 py-2 text-xs font-black uppercase text-black shadow-[2px_2px_0px_#FFF] hover:bg-yellow-300 disabled:cursor-not-allowed disabled:border-zinc-700 disabled:bg-zinc-900 disabled:text-zinc-500 disabled:shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] sm:min-h-0"
                   >
                     <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
                     Kick [R]
@@ -673,7 +673,7 @@ export function GarageView() {
                       setStandInput({ choke: !standTest.choke });
                     }}
                     aria-pressed={standTest.choke}
-                    className={`border-2 px-3 py-2 text-xs font-black uppercase transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] ${
+                    className={`min-h-[44px] border-2 px-3 py-2 text-xs font-black uppercase transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] sm:min-h-0 ${
                       standTest.choke
                         ? "border-cyan-400 bg-cyan-400 text-black"
                         : "border-zinc-700 bg-black text-zinc-200 hover:border-cyan-400"
@@ -708,7 +708,7 @@ export function GarageView() {
                       setBlippingStand(false);
                       setStandInput({ throttle: 0 });
                     }}
-                    className={`touch-none border-2 px-4 py-2 text-xs font-black uppercase transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] ${
+                    className={`col-span-2 min-h-[48px] touch-none border-2 px-4 py-2 text-xs font-black uppercase transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] sm:col-span-1 sm:min-h-0 ${
                       blippingStand
                         ? "border-emerald-400 bg-emerald-400 text-black"
                         : "border-[#FFD700] bg-black text-[#FFD700] hover:bg-[#FFD700]/15"

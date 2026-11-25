@@ -1182,33 +1182,40 @@ export function MopedWorkbench({
                 left: `${spot.xPct}%`,
                 top: `${spot.yPct}%`,
               }}
-              className={`group absolute z-10 -translate-x-1/2 -translate-y-1/2 rounded-full transition-transform hover:z-30 focus-visible:z-30 focus-visible:scale-125 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FFD700] ${
+              className={`group absolute z-10 flex h-11 w-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full transition-transform hover:z-30 focus-visible:z-30 focus-visible:scale-125 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FFD700] ${
                 isValid
-                  ? "h-8 w-8 sm:h-9 sm:w-9"
-                  : "h-6 w-6 opacity-75 hover:opacity-100"
+                  ? ""
+                  : "opacity-80 hover:opacity-100"
               }`}
             >
-              {/* Pulsing target ring for valid tool hotspots */}
-              {isValid && (
-                <span
-                  aria-hidden="true"
-                  className="absolute inset-0 animate-ping rounded-full bg-[#FFD700]/60 motion-reduce:animate-none"
-                />
-              )}
+              {/* Visual pin centered inside a 44x44 mobile-friendly touch target */}
               <span
-                aria-hidden="true"
-                className={`relative flex h-full w-full items-center justify-center rounded-full border-2 font-black shadow-[0_0_0_2px_rgba(0,0,0,0.9)] transition-colors ${
-                  isValid
-                    ? isLast
-                      ? "border-black bg-cyan-400 text-black"
-                      : "border-black bg-[#FFD700] text-black group-hover:bg-white"
-                    : "border-zinc-400 bg-zinc-900/90 text-zinc-300 group-hover:border-[#FFD700] group-hover:text-[#FFD700]"
+                className={`relative flex items-center justify-center rounded-full ${
+                  isValid ? "h-8 w-8 sm:h-9 sm:w-9" : "h-6 w-6"
                 }`}
               >
-                <Crosshair
-                  className={isValid ? "h-4 w-4" : "h-3 w-3"}
+                {/* Pulsing target ring for valid tool hotspots */}
+                {isValid && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute inset-0 animate-ping rounded-full bg-[#FFD700]/60 motion-reduce:animate-none"
+                  />
+                )}
+                <span
                   aria-hidden="true"
-                />
+                  className={`relative flex h-full w-full items-center justify-center rounded-full border-2 font-black shadow-[0_0_0_2px_rgba(0,0,0,0.9)] transition-colors ${
+                    isValid
+                      ? isLast
+                        ? "border-black bg-cyan-400 text-black"
+                        : "border-black bg-[#FFD700] text-black group-hover:bg-white"
+                      : "border-zinc-400 bg-zinc-900/90 text-zinc-300 group-hover:border-[#FFD700] group-hover:text-[#FFD700]"
+                  }`}
+                >
+                  <Crosshair
+                    className={isValid ? "h-4 w-4" : "h-3 w-3"}
+                    aria-hidden="true"
+                  />
+                </span>
               </span>
 
               {/* Tooltip (hover/focus only so neighboring pins stay unobstructed) */}
@@ -1246,7 +1253,7 @@ export function MopedWorkbench({
                 key={spot.id}
                 type="button"
                 onClick={() => onHotspotClick(spot.id)}
-                className={`border-2 px-2 py-1 text-[11px] font-black uppercase tracking-wide transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] ${
+                className={`min-h-[38px] border-2 px-2.5 py-1.5 text-xs font-black uppercase tracking-wide transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] sm:min-h-0 sm:px-2 sm:py-1 sm:text-[11px] ${
                   isValid
                     ? "border-[#FFD700] bg-[#FFD700]/15 text-[#FFD700] hover:bg-[#FFD700] hover:text-black"
                     : "border-zinc-800 bg-zinc-950 text-zinc-400 hover:border-zinc-500 hover:text-white"

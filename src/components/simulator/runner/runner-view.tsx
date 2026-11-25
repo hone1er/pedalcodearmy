@@ -105,6 +105,11 @@ export function RunnerView() {
   const [keyLegendVisible, setKeyLegendVisible] = useState(false);
   const [hud, setHud] = useState<RunnerHudSnapshot | null>(null);
   const [lbRefreshKey, setLbRefreshKey] = useState(0);
+  const [padState, setPadState] = useState({
+    brake: false,
+    clutch: false,
+    wheelie: false,
+  });
 
   // Leaderboard submission state
   const [riderName, setRiderName] = useState("");
@@ -121,14 +126,41 @@ export function RunnerView() {
   const inputRef = useRef<RunnerInput>({ ...NEUTRAL_RUNNER_INPUT });
   const pausedRef = useRef(false);
   const mutedRef = useRef(muted);
-  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const touchGestureRef = useRef<{
+    startX: number;
+    startY: number;
+    lastSwipeY: number;
+    swiped: boolean;
+    holdingWheelie: boolean;
+    holdTimer: number | null;
+  } | null>(null);
   const completeRunnerRunRef = useRef(completeRunnerRun);
   completeRunnerRunRef.current = completeRunnerRun;
+
+  const clearCanvasTouchGesture = useCallback(() => {
+    const g = touchGestureRef.current;
+    if (!g) return;
+    if (g.holdTimer !== null) {
+      window.clearTimeout(g.holdTimer);
+    }
+    if (g.holdingWheelie) {
+      inputRef.current.wheelieHeld = false;
+      setPadState((s) => (s.wheelie ? { ...s, wheelie: false } : s));
+    }
+    touchGestureRef.current = null;
+  }, []);
 
   useEffect(() => {
     pausedRef.current = paused;
     synthRef.current?.setPaused(paused);
-  }, [paused]);
+    if (paused) {
+      clearCanvasTouchGesture();
+      inputRef.current.brake = false;
+      inputRef.current.clutch = false;
+      inputRef.current.wheelieHeld = false;
+      setPadState({ brake: false, clutch: false, wheelie: false });
+    }
+  }, [clearCanvasTouchGesture, paused]);
 
   useEffect(() => {
     mutedRef.current = muted;
@@ -154,9 +186,10 @@ export function RunnerView() {
         runnerRef.current = null;
         completeRunnerRunRef.current(finalizeRunnerRun(activeState, "aborted"));
       }
+      clearCanvasTouchGesture();
       stopAudio();
     };
-  }, [stopAudio]);
+  }, [clearCanvasTouchGesture, stopAudio]);
 
   // Auto-fade the 3-second start-of-run key legend overlay
   useEffect(() => {
@@ -176,6 +209,8 @@ export function RunnerView() {
         state,
         overrideReason ?? state.endReason ?? "aborted",
       );
+      clearCanvasTouchGesture();
+      setPadState({ brake: false, clutch: false, wheelie: false });
       stopAudio();
       setKeyLegendVisible(false);
       setPaused(false);
@@ -186,7 +221,7 @@ export function RunnerView() {
       setSubmitError(null);
       completeRunnerRun(result);
     },
-    [completeRunnerRun, setRunnerPlaying, stopAudio],
+    [clearCanvasTouchGesture, completeRunnerRun, setRunnerPlaying, stopAudio],
   );
 
   const startRun = useCallback(() => {
@@ -223,6 +258,11 @@ export function RunnerView() {
 
     const renderer = new RunnerRenderer(canvas);
     rendererRef.current = renderer;
+
+    const initialRect = stage.getBoundingClientRect();
+    if (initialRect.width > 0 && initialRect.height > 0) {
+      renderer.resize(initialRect.width, initialRect.height);
+    }
 
     const ro = new ResizeObserver((entries) => {
       for (const entry of entries) {
@@ -461,9 +501,136 @@ export function RunnerView() {
     const pipeName = getPartById(bike.parts.exhaust)?.name ?? "Stock Pipe";
 
     return (
-      <div className="space-y-3">
-        {/* Top Arcade HUD Strip */}
-        <div className="flex flex-wrap items-center justify-between gap-2 border-4 border-[#FFD700] bg-zinc-950 px-3 py-2 shadow-[4px_4px_0px_0px_#000]">
+      <div className="flex h-full w-full min-w-0 flex-col gap-1.5 p-1.5 select-none md:h-auto md:gap-3 md:p-0">
+        {/* Mobile Ultra-Compact Arcade HUD Strip */}
+        <div className="flex shrink-0 items-center justify-between gap-1.5 border-2 border-[#FFD700] bg-zinc-950 px-2 py-1.5 md:hidden">
+          <div className="flex min-w-0 items-center gap-2">
+            {/* Score + Combo */}
+            <div className="min-w-0">
+              <div className="flex items-baseline gap-1">
+                <span
+                  className="text-base font-black leading-none text-[#FFD700] tabular-nums"
+                  style={{ fontFamily: "var(--font-orbitron), Orbitron, monospace" }}
+                >
+                  {hud.score.toLocaleString()}
+                </span>
+                <span
+                  className={`text-[10px] font-black uppercase ${
+                    hud.comboMultiplier >= 3
+                      ? "text-[#FFD700]"
+                      : hud.comboMultiplier === 2
+                        ? "text-cyan-300"
+                        : "text-zinc-400"
+                  }`}
+                >
+                  x{hud.comboMultiplier}
+                </span>
+              </div>
+              <div className="mt-0.5 h-1.5 w-16 overflow-hidden border border-zinc-700 bg-black">
+                <div
+                  className="h-full bg-[#FFD700] transition-all duration-75"
+                  style={{ width: `${hud.comboPct}%` }}
+                />
+              </div>
+            </div>
+
+            {/* Hearts */}
+            <div
+              className="flex items-center gap-0.5 border-l border-zinc-800 pl-2"
+              aria-label={`Health ${hud.health} of ${hud.maxHealth}`}
+            >
+              {Array.from({ length: hud.maxHealth }).map((_, idx) => (
+                <Heart
+                  key={idx}
+                  className={`h-4 w-4 ${
+                    idx < hud.health
+                      ? "fill-red-500 text-red-500"
+                      : "text-zinc-700"
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Right: Speed, CHT / Powerup, Mute, Pause, Quit */}
+          <div className="flex shrink-0 items-center gap-1">
+            {hud.turboSec > 0 && (
+              <span className="border border-black bg-[#FFD700] px-1 py-0.5 text-[9px] font-black uppercase text-black">
+                TURBO
+              </span>
+            )}
+            {hud.magnetSec > 0 && hud.turboSec <= 0 && (
+              <span className="border border-black bg-cyan-400 px-1 py-0.5 text-[9px] font-black uppercase text-black">
+                MAG
+              </span>
+            )}
+            {hud.hasChtGauge && hud.chtC >= 180 && (
+              <span
+                className={`border px-1 py-0.5 text-[9px] font-black tabular-nums ${
+                  hud.chtC > 195
+                    ? "border-red-500 bg-red-950 text-red-200"
+                    : "border-orange-500 bg-black text-orange-300"
+                }`}
+              >
+                {Math.round(hud.chtC)}°C
+              </span>
+            )}
+            <div className="border border-zinc-700 bg-black px-1.5 py-0.5 text-right">
+              <span
+                className="text-sm font-black text-white tabular-nums"
+                style={{ fontFamily: "var(--font-orbitron), Orbitron, monospace" }}
+              >
+                {Math.round(hud.speedMph)}
+              </span>
+              <span className="ml-0.5 text-[9px] font-black uppercase text-zinc-400">
+                MPH
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.currentTarget.blur();
+                setMuted((m) => !m);
+              }}
+              aria-label={muted ? "Unmute audio" : "Mute audio"}
+              className="flex h-8 w-8 items-center justify-center border-2 border-zinc-700 bg-black text-zinc-200"
+            >
+              {muted ? (
+                <VolumeX className="h-3.5 w-3.5 text-red-400" />
+              ) : (
+                <Volume2 className="h-3.5 w-3.5 text-[#FFD700]" />
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.currentTarget.blur();
+                setPaused((p) => !p);
+              }}
+              aria-label={paused ? "Resume run" : "Pause run"}
+              className="flex h-8 w-8 items-center justify-center border-2 border-zinc-700 bg-black text-zinc-200"
+            >
+              {paused ? (
+                <Play className="h-3.5 w-3.5 text-emerald-400" />
+              ) : (
+                <Pause className="h-3.5 w-3.5" />
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.currentTarget.blur();
+                finishActiveRun("aborted");
+              }}
+              className="flex h-8 items-center border-2 border-zinc-700 bg-zinc-900 px-2 text-[10px] font-black uppercase text-zinc-200"
+            >
+              Quit
+            </button>
+          </div>
+        </div>
+
+        {/* Desktop Top Arcade HUD Strip */}
+        <div className="hidden flex-wrap items-center justify-between gap-2 border-4 border-[#FFD700] bg-zinc-950 px-3 py-2 shadow-[4px_4px_0px_0px_#000] md:flex">
           <div className="flex flex-wrap items-center gap-3">
             {/* Score */}
             <div>
@@ -665,23 +832,65 @@ export function RunnerView() {
           ref={stageRef}
           onTouchStart={(e) => {
             ensureAudio();
+            if (pausedRef.current) return;
             const t = e.touches[0];
-            if (t) touchStartRef.current = { x: t.clientX, y: t.clientY };
+            if (!t) return;
+            clearCanvasTouchGesture();
+            const holdTimer = window.setTimeout(() => {
+              const g = touchGestureRef.current;
+              if (!g || g.swiped || pausedRef.current) return;
+              g.holdingWheelie = true;
+              inputRef.current.wheeliePulse = true;
+              inputRef.current.wheelieHeld = true;
+              setPadState((s) => ({ ...s, wheelie: true }));
+            }, 140);
+            touchGestureRef.current = {
+              startX: t.clientX,
+              startY: t.clientY,
+              lastSwipeY: t.clientY,
+              swiped: false,
+              holdingWheelie: false,
+              holdTimer,
+            };
+          }}
+          onTouchMove={(e) => {
+            const g = touchGestureRef.current;
+            const t = e.touches[0];
+            if (!g || !t || pausedRef.current) return;
+            const dy = t.clientY - g.lastSwipeY;
+            if (Math.abs(dy) >= 22) {
+              if (g.holdTimer !== null) {
+                window.clearTimeout(g.holdTimer);
+                g.holdTimer = null;
+              }
+              if (g.holdingWheelie) {
+                g.holdingWheelie = false;
+                inputRef.current.wheelieHeld = false;
+                setPadState((s) => (s.wheelie ? { ...s, wheelie: false } : s));
+              }
+              inputRef.current.laneDir = dy < 0 ? -1 : 1;
+              g.swiped = true;
+              g.lastSwipeY = t.clientY;
+            }
           }}
           onTouchEnd={(e) => {
-            const start = touchStartRef.current;
+            const g = touchGestureRef.current;
             const t = e.changedTouches[0];
-            touchStartRef.current = null;
-            if (!start || !t || pausedRef.current) return;
-            const dy = t.clientY - start.y;
-            const dx = t.clientX - start.x;
-            if (Math.abs(dy) > 26 && Math.abs(dy) > Math.abs(dx)) {
-              inputRef.current.laneDir = dy < 0 ? -1 : 1;
-            } else if (Math.abs(dx) < 25 && Math.abs(dy) < 25) {
+            if (!g) return;
+            const wasSwiped = g.swiped;
+            const wasHolding = g.holdingWheelie;
+            const startX = g.startX;
+            const startY = g.startY;
+            clearCanvasTouchGesture();
+            if (pausedRef.current || wasSwiped || wasHolding || !t) return;
+            const dx = Math.abs(t.clientX - startX);
+            const dy = Math.abs(t.clientY - startY);
+            if (dx < 24 && dy < 24) {
               inputRef.current.wheeliePulse = true;
             }
           }}
-          className="relative h-[320px] w-full min-w-0 touch-none overflow-hidden border-4 border-black bg-zinc-950 shadow-[6px_6px_0px_0px_#000] sm:h-[400px] md:h-[440px]"
+          onTouchCancel={clearCanvasTouchGesture}
+          className="relative min-h-0 w-full min-w-0 flex-1 touch-none overflow-hidden border-2 border-black bg-zinc-950 md:h-[440px] md:flex-none md:border-4 md:shadow-[6px_6px_0px_0px_#000]"
         >
           <canvas ref={canvasRef} className="block h-full w-full" />
 
@@ -697,10 +906,13 @@ export function RunnerView() {
             />
           )}
 
-          {/* Start-of-Run 3-Second Auto-Fading Key Legend Pill */}
+          {/* Start-of-Run 3-Second Auto-Fading Key / Touch Legend Pill */}
           {keyLegendVisible && !paused && !hud.seizeActive && !hud.dying && (
-            <div className="pointer-events-none absolute inset-x-0 bottom-3 z-20 flex justify-center px-3 transition-opacity duration-500">
-              <div className="border-2 border-[#FFD700] bg-black/85 px-3 py-1.5 text-center text-[11px] font-black uppercase tracking-wide text-[#FFD700] shadow-[3px_3px_0px_#000]">
+            <div className="pointer-events-none absolute inset-x-0 bottom-2 z-20 flex justify-center px-2 transition-opacity duration-500 md:bottom-3 md:px-3">
+              <div className="border-2 border-[#FFD700] bg-black/85 px-2.5 py-1 text-center text-[10px] font-black uppercase tracking-wide text-[#FFD700] shadow-[3px_3px_0px_#000] md:hidden">
+                Swipe Up/Down or Use Pads &bull; Hold Wheelie &bull; Clutch If Hot
+              </div>
+              <div className="hidden border-2 border-[#FFD700] bg-black/85 px-3 py-1.5 text-center text-[11px] font-black uppercase tracking-wide text-[#FFD700] shadow-[3px_3px_0px_#000] md:block">
                 W/S Lanes &bull; Space Hold/Tap Wheelie &bull; Q Clutch &bull; B
                 Coast &bull; R Kick &bull; Esc Pause
               </div>
@@ -840,8 +1052,168 @@ export function RunnerView() {
           )}
         </div>
 
-        {/* Arcade Control Deck (Desktop hints + Mobile touch controls) */}
-        <div className="flex flex-wrap items-center justify-between gap-2 border-4 border-black bg-[#FFD700] p-2.5 text-black shadow-[4px_4px_0px_0px_#000]">
+        {/* Mobile Dual-Thumb Arcade Gamepad */}
+        <div className="grid shrink-0 grid-cols-12 gap-1.5 border-2 border-black bg-[#FFD700] p-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] text-black md:hidden">
+          {/* Left Thumb: Big Up & Down Lane Pads */}
+          <div className="col-span-5 grid grid-cols-2 gap-1.5">
+            <button
+              type="button"
+              onContextMenu={(e) => e.preventDefault()}
+              onPointerDown={(e) => {
+                e.preventDefault();
+                ensureAudio();
+                inputRef.current.laneDir = -1;
+              }}
+              aria-label="Switch lane up"
+              className="flex min-h-[64px] touch-none flex-col items-center justify-center border-[3px] border-black bg-white px-2 py-2 text-xs font-black uppercase shadow-[2px_2px_0px_#000] active:translate-y-0.5 active:bg-zinc-200 active:shadow-none"
+            >
+              <ArrowUp className="h-6 w-6" />
+              <span className="text-[10px]">UP</span>
+            </button>
+            <button
+              type="button"
+              onContextMenu={(e) => e.preventDefault()}
+              onPointerDown={(e) => {
+                e.preventDefault();
+                ensureAudio();
+                inputRef.current.laneDir = 1;
+              }}
+              aria-label="Switch lane down"
+              className="flex min-h-[64px] touch-none flex-col items-center justify-center border-[3px] border-black bg-white px-2 py-2 text-xs font-black uppercase shadow-[2px_2px_0px_#000] active:translate-y-0.5 active:bg-zinc-200 active:shadow-none"
+            >
+              <ArrowDown className="h-6 w-6" />
+              <span className="text-[10px]">DOWN</span>
+            </button>
+          </div>
+
+          {/* Center: Coast + Clutch (or Kick when stalled) */}
+          <div className="col-span-3 flex flex-col gap-1">
+            {hud.stalled && !hud.seizeActive && !hud.seizedHard ? (
+              <button
+                type="button"
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  ensureAudio();
+                  inputRef.current.kickstartPulse = true;
+                }}
+                className="flex min-h-[30px] flex-1 animate-pulse touch-none items-center justify-center border-2 border-black bg-orange-500 px-1 text-[11px] font-black uppercase text-black"
+              >
+                KICK!
+              </button>
+            ) : (
+              <button
+                type="button"
+                onContextMenu={(e) => e.preventDefault()}
+                onPointerDown={(e) => {
+                  ensureAudio();
+                  try {
+                    e.currentTarget.setPointerCapture(e.pointerId);
+                  } catch {
+                    // synthetic
+                  }
+                  inputRef.current.brake = true;
+                  setPadState((s) => ({ ...s, brake: true }));
+                }}
+                onPointerUp={() => {
+                  inputRef.current.brake = false;
+                  setPadState((s) => ({ ...s, brake: false }));
+                }}
+                onPointerCancel={() => {
+                  inputRef.current.brake = false;
+                  setPadState((s) => ({ ...s, brake: false }));
+                }}
+                onLostPointerCapture={() => {
+                  inputRef.current.brake = false;
+                  setPadState((s) => ({ ...s, brake: false }));
+                }}
+                className={`flex min-h-[30px] flex-1 touch-none items-center justify-center border-2 border-black px-1 text-[10px] font-black uppercase ${
+                  padState.brake
+                    ? "bg-zinc-800 text-white"
+                    : "bg-zinc-200 text-black"
+                }`}
+              >
+                COAST
+              </button>
+            )}
+            <button
+              type="button"
+              onContextMenu={(e) => e.preventDefault()}
+              onPointerDown={(e) => {
+                ensureAudio();
+                try {
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                } catch {
+                  // synthetic
+                }
+                inputRef.current.clutch = true;
+                setPadState((s) => ({ ...s, clutch: true }));
+              }}
+              onPointerUp={() => {
+                inputRef.current.clutch = false;
+                setPadState((s) => ({ ...s, clutch: false }));
+              }}
+              onPointerCancel={() => {
+                inputRef.current.clutch = false;
+                setPadState((s) => ({ ...s, clutch: false }));
+              }}
+              onLostPointerCapture={() => {
+                inputRef.current.clutch = false;
+                setPadState((s) => ({ ...s, clutch: false }));
+              }}
+              className={`flex min-h-[30px] flex-1 touch-none items-center justify-center border-2 border-black px-1 text-[10px] font-black uppercase ${
+                padState.clutch
+                  ? "bg-orange-500 text-black"
+                  : hud.seizeActive
+                    ? "animate-pulse bg-red-600 text-white"
+                    : "bg-cyan-300 text-black"
+              }`}
+            >
+              {hud.seizeActive ? "CLUTCH!" : "CLUTCH"}
+            </button>
+          </div>
+
+          {/* Right Thumb: Giant Hold/Tap Wheelie Pad */}
+          <button
+            type="button"
+            onContextMenu={(e) => e.preventDefault()}
+            onPointerDown={(e) => {
+              ensureAudio();
+              try {
+                e.currentTarget.setPointerCapture(e.pointerId);
+              } catch {
+                // synthetic
+              }
+              inputRef.current.wheeliePulse = true;
+              inputRef.current.wheelieHeld = true;
+              setPadState((s) => ({ ...s, wheelie: true }));
+            }}
+            onPointerUp={() => {
+              inputRef.current.wheelieHeld = false;
+              setPadState((s) => ({ ...s, wheelie: false }));
+            }}
+            onPointerCancel={() => {
+              inputRef.current.wheelieHeld = false;
+              setPadState((s) => ({ ...s, wheelie: false }));
+            }}
+            onLostPointerCapture={() => {
+              inputRef.current.wheelieHeld = false;
+              setPadState((s) => ({ ...s, wheelie: false }));
+            }}
+            className={`col-span-4 flex min-h-[64px] touch-none flex-col items-center justify-center border-[3px] border-black px-2 py-2 text-sm font-black uppercase shadow-[2px_2px_0px_#FFF] ${
+              padState.wheelie
+                ? "translate-y-0.5 bg-emerald-400 text-black shadow-none"
+                : "bg-black text-[#FFD700]"
+            }`}
+          >
+            <span className="leading-none">WHEELIE</span>
+            <span className="mt-1 text-[9px] font-bold opacity-80">
+              TAP / HOLD
+            </span>
+          </button>
+        </div>
+
+        {/* Desktop Arcade Control Deck */}
+        <div className="hidden flex-wrap items-center justify-between gap-2 border-4 border-black bg-[#FFD700] p-2.5 text-black shadow-[4px_4px_0px_0px_#000] md:flex">
           <div className="flex items-center gap-1.5">
             <button
               type="button"

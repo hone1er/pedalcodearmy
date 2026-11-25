@@ -192,6 +192,14 @@ export class RideRenderer {
     this.resize();
   }
 
+  private getPxPerMeter(): number {
+    return Math.max(11.5, Math.min(22, this.width / 30));
+  }
+
+  private getBikeScale(): number {
+    return this.width < 520 ? Math.max(0.78, this.width / 540) : 1;
+  }
+
   resize(width?: number, height?: number): void {
     if (typeof window === "undefined") return;
     const rect =
@@ -203,7 +211,7 @@ export class RideRenderer {
       Math.floor(rect.width || this.canvas.clientWidth || 960),
     );
     const h = Math.max(
-      240,
+      160,
       Math.floor(rect.height || this.canvas.clientHeight || 460),
     );
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -294,7 +302,8 @@ export class RideRenderer {
     const w = this.width;
     const h = this.height;
     const roadY = Math.round(h * 0.72);
-    const bikeX = Math.round(w * (w < 640 ? 0.28 : 0.32));
+    const bikeX = Math.round(w * (w < 560 ? 0.22 : w < 640 ? 0.28 : 0.32));
+    const bikeScale = this.getBikeScale();
 
     ctx.save();
     ctx.scale(this.dpr, this.dpr);
@@ -361,8 +370,8 @@ export class RideRenderer {
         : 0;
 
     const exhaustTip = this.getExhaustTipOffset(snapshot.exhaustVisual);
-    const localTipX = exhaustTip.x;
-    const localTipY = exhaustTip.y + bounce;
+    const localTipX = exhaustTip.x * bikeScale;
+    const localTipY = (exhaustTip.y + bounce) * bikeScale;
     const cosG = Math.cos(gradeRad);
     const sinG = Math.sin(gradeRad);
     const worldTipX = bikeX + shakeX + localTipX * cosG - localTipY * sinG;
@@ -401,6 +410,9 @@ export class RideRenderer {
     ctx.save();
     ctx.translate(bikeX + shakeX, roadY + shakeY);
     ctx.rotate(gradeRad);
+    if (bikeScale !== 1) {
+      ctx.scale(bikeScale, bikeScale);
+    }
 
     this.drawMopedAndRider(
       ctx,
@@ -477,7 +489,7 @@ export class RideRenderer {
     roadY: number,
     distanceM: number,
   ): void {
-    const pxPerMeter = 22;
+    const pxPerMeter = this.getPxPerMeter();
     const ceilingBottom = Math.max(46, Math.round(h * 0.22));
     const wallBottom = roadY - 24;
 
@@ -987,7 +999,7 @@ export class RideRenderer {
     ctx.fillRect(left, 0, roadSpan, h + Math.ceil(w * 0.25));
 
     // Scrolling dashed yellow road markings
-    const pxPerMeter = 22;
+    const pxPerMeter = this.getPxPerMeter();
     const roadScroll = (snapshot.distanceM * pxPerMeter) % 140;
     ctx.fillStyle = palette.roadStripe;
     for (let x = left - roadScroll; x < right; x += 140) {

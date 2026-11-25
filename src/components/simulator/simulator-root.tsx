@@ -402,10 +402,38 @@ export function SimulatorRoot() {
     window.scrollTo({ top: 0, behavior: "instant" });
   }, [viewGroup]);
 
+  // Lock body scroll & pull-to-refresh on mobile while driving so thumbs never fight page scroll
+  useEffect(() => {
+    if (!hideChrome || typeof window === "undefined") return;
+    const mql = window.matchMedia("(max-width: 767px)");
+    const prevOverflow = document.body.style.overflow;
+    const prevOverscroll = document.body.style.overscrollBehavior;
+    const applyLock = () => {
+      if (mql.matches) {
+        document.body.style.overflow = "hidden";
+        document.body.style.overscrollBehavior = "none";
+      } else {
+        document.body.style.overflow = prevOverflow;
+        document.body.style.overscrollBehavior = prevOverscroll;
+      }
+    };
+    applyLock();
+    mql.addEventListener("change", applyLock);
+    return () => {
+      mql.removeEventListener("change", applyLock);
+      document.body.style.overflow = prevOverflow;
+      document.body.style.overscrollBehavior = prevOverscroll;
+    };
+  }, [hideChrome]);
+
   return (
     <div className="min-h-[calc(100vh-80px)] bg-black text-white">
-      {/* Top Arcade Status Bar */}
-      <header className="border-b-4 border-[#FFD700] bg-zinc-950">
+      {/* Top Arcade Status Bar (hidden on mobile while actively driving so full viewport goes to the road + thumb pads) */}
+      <header
+        className={`border-b-4 border-[#FFD700] bg-zinc-950 ${
+          hideChrome ? "hidden md:block" : ""
+        }`}
+      >
         <div className="container mx-auto max-w-7xl px-4 py-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             {/* Brand + Active Bike */}
@@ -530,7 +558,7 @@ export function SimulatorRoot() {
           {!hideChrome ? (
             <nav
               aria-label="Simulator sections"
-              className="mt-3 flex flex-wrap gap-2 border-t border-zinc-800 pt-3"
+              className="mt-3 flex flex-nowrap gap-2 overflow-x-auto border-t border-zinc-800 pt-3 pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0"
             >
               {PHASE_TABS.map(({ phase: tabPhase, label, icon: Icon }) => {
                 const active = phase === tabPhase;
@@ -540,7 +568,7 @@ export function SimulatorRoot() {
                     type="button"
                     onClick={() => setPhase(tabPhase)}
                     aria-current={active ? "page" : undefined}
-                    className={`inline-flex items-center gap-1.5 border-2 px-4 py-1.5 text-xs font-black uppercase tracking-wider transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] ${
+                    className={`inline-flex min-h-[40px] shrink-0 items-center gap-1.5 border-2 px-3.5 py-1.5 text-xs font-black uppercase tracking-wider transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] sm:min-h-0 sm:px-4 ${
                       active
                         ? "border-[#FFD700] bg-[#FFD700] text-black shadow-[3px_3px_0px_0px_#FFF]"
                         : "border-zinc-700 bg-black text-zinc-200 hover:border-[#FFD700] hover:text-[#FFD700]"
@@ -571,14 +599,20 @@ export function SimulatorRoot() {
         </div>
       </header>
 
-      {/* Main Content Container */}
-      <div className="container mx-auto max-w-7xl px-4 py-5">
+      {/* Main Content Container (full-viewport locked cockpit on mobile when driving) */}
+      <div
+        className={
+          hideChrome
+            ? "fixed inset-0 z-50 flex h-[100dvh] w-full flex-col overflow-hidden overscroll-none bg-black p-0 md:static md:inset-auto md:z-auto md:container md:mx-auto md:block md:h-auto md:max-w-7xl md:overflow-visible md:px-4 md:py-5"
+            : "container mx-auto max-w-7xl px-3 py-4 sm:px-4 sm:py-5"
+        }
+      >
         {/* Transient Action Notice Banner */}
         {lastActionNotice && (
           <div
             role="status"
             aria-live="polite"
-            className={`mb-4 flex items-center justify-between gap-3 border-2 px-4 py-2.5 text-sm font-bold shadow-[4px_4px_0px_0px_#000] ${noticeToneClass(
+            className={`${hideChrome ? "hidden md:flex" : "flex"} mb-4 items-center justify-between gap-3 border-2 px-4 py-2.5 text-sm font-bold shadow-[4px_4px_0px_0px_#000] ${noticeToneClass(
               lastActionNotice.tone,
             )}`}
           >
